@@ -17,6 +17,10 @@ class OperationProcessor:
     def apply(self, operation: Operation) -> None:
         if operation.operation_type == "add_node":
             self._apply_add_node(operation)
+        elif operation.operation_type == "update_scalar":
+            self._apply_update_scalar(operation)
+        elif operation.operation_type == "remove_node":
+            self._apply_remove_node(operation)
         else:
             raise NotImplementedError(
                 f"Unsupported operation type: {operation.operation_type}"
@@ -34,12 +38,43 @@ class OperationProcessor:
 
         new_node = Node.create(node_type)
 
-        # 1. Register as unlinked
         self._store.add_unlinked_node(new_node)
 
-        # 2. Link to parent safely
         self._store.link_child(
             parent_id=parent_id,
             child_id=new_node.id,
             key=key,
         )
+
+    def _apply_update_scalar(self, operation: Operation) -> None:
+        payload = operation.payload
+
+        node_id: UUID = payload["node_id"]
+        new_value = payload["value"]
+
+        if not self._store.has_node(node_id):
+            raise ValueError("Target node does not exist.")
+
+        node = self._store.get_node(node_id)
+
+        if node.type != NodeType.SCALAR:
+            raise ValueError("Only scalar nodes can be updated.")
+
+        node.value = new_value
+
+    def _apply_remove_node(self, operation: Operation) -> None:
+        payload = operation.payload
+
+        node_id: UUID = payload["node_id"]
+
+        if not self._store.has_node(node_id):
+            raise ValueError("Target node does not exist.")
+
+        if node_id == self._store.root_id:
+            raise ValueError("Root node cannot be removed.")
+
+        # Must unlink first
+        self._store.unlink_child(child_id=node_id)
+
+        # Then delete subtree
+        self._store.delete_subtree(node_id=node_id)
