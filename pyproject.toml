@@ -1,0 +1,11 @@
+﻿[project]
+name = "zeno"
+version = "0.1.0"
+description = "Schema-driven structured text editor"
+authors = [{ name = "Rod" }]
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
