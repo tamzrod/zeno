@@ -1,4 +1,4 @@
-﻿[project]
+[project]
 name = "zeno"
 version = "0.1.0"
 description = "Schema-driven structured text editor"
