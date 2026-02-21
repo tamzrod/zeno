@@ -1,186 +1,229 @@
 # ZENO -- Architecture Document
 
-Version: v0.1 (Pre-Implementation Lock)
+## 1. Purpose
+
+Zeno is a schema-driven configuration instrument.
+
+Its purpose is:
+
+> Make it hard for the user to make a mistake.
+
+Zeno is not a text editor.\
+Zeno is not a YAML playground.\
+Zeno is a controlled configuration environment.
 
 ------------------------------------------------------------------------
 
-# 1. Purpose
+## 2. Core Philosophy
 
-Zeno is a schema-driven structured text editor.
-
-It is a desktop engineering tool used to: - Edit structured
-configuration files - Enforce schema rules - Prevent invalid
-configurations by design
-
-Zeno is NOT: - A runtime engine - A config executor - A format-specific
-editor - A domain-specific MMA tool
-
-------------------------------------------------------------------------
-
-# 2. Core Philosophy
-
-Core is dumb\
-Schema is smart\
-Adapters translate formats\
-UI renders based on schema
-
-Strict separation of concerns is mandatory.
+1.  Structure is authoritative.
+2.  Schema defines what is allowed.
+3.  Core engine is dumb.
+4.  Schema is smart.
+5.  UI never enforces domain rules directly.
+6.  No live magic processing.
+7.  No hidden defaults.
+8.  Explicit actions only.
+9.  Deterministic validation.
+10. Errors are highlighted, not shouted.
 
 ------------------------------------------------------------------------
 
-# 3. High-Level Architecture
+## 3. High-Level Architecture
 
-UI Layer\
-↓\
-Schema Layer\
-↓\
-Core Engine (IR + Validation)\
-↓\
-Adapters\
-↓\
-Text Formats (YAML, JSON, INI, etc.)
+    +--------------------+
+    |        UI          |
+    |  (Desktop / Web)   |
+    +--------------------+
+               |
+               v
+    +--------------------+
+    |        Core        |
+    |  IR + Schema +     |
+    |  Validator +       |
+    |  Exporter          |
+    +--------------------+
 
-Each layer has fixed responsibilities and may not leak into others.
+Core is UI-agnostic.
 
-------------------------------------------------------------------------
+Future: - Desktop UI (PySide6) - Web UI (separate frontend)
 
-# 4. Layer Responsibilities
-
-## 4.1 UI Layer
-
-Responsible for: - Rendering tree view - Rendering inspector view -
-Triggering user operations - Displaying validation feedback
-
-UI must NEVER: - Interpret YAML/JSON - Contain domain logic - Contain
-hardcoded business rules - Modify IR directly
-
-All edits must pass through schema-validated operations.
+Both must call the same core logic.
 
 ------------------------------------------------------------------------
 
-## 4.2 Schema Layer
+## 4. Two Operating Modes
 
-Responsible for: - Defining structure - Defining node types - Defining
-constraints - Defining cardinality rules - Defining conditional
-visibility - Defining validation rules - Defining editor behavior
+### 4.1 Schema Mode
 
-Schema drives: - Tree rendering - Inspector rendering - Add/remove
-permissions - Required rules - Validation outcomes
+Purpose: Edit `.zs` schema files.
 
-Schema must be declarative.
-
-------------------------------------------------------------------------
-
-## 4.3 Core Engine
-
-Contains: - Intermediate Representation (IR) - Validation Engine -
-Operation Processor
-
-Core responsibilities: - Store document state in IR - Apply validated
-operations - Maintain revision state - Trigger validation - Provide
-change events
-
-Core must be: - Format-agnostic - Domain-agnostic
-
-Core must not know YAML or MMA.
+Characteristics: - Tree represents schema structure. - Modify tab edits
+schema. - Documentation tab describes schema meta. - Preview is disabled
+or schema preview only.
 
 ------------------------------------------------------------------------
 
-## 4.4 Adapters
+### 4.2 Config Mode
 
-Adapters translate:
+Purpose: Edit configuration constrained by a loaded schema.
 
-Text format ⇄ IR
+Characteristics: - Schema must be loaded first. - Tree represents
+configuration structure. - Modify tab edits config values. -
+Documentation tab shows schema-based help. - Preview tab generates
+runtime export.
 
-Initial adapter: - YAML
-
-Future adapters: - JSON - INI - NGINX - Other structured formats
-
-Adapters must: - Parse text into IR - Serialize IR into text - Preserve
-data fidelity - Avoid validation logic
-
-Adapters must never inject schema rules.
+Schema is mandatory in Config Mode.
 
 ------------------------------------------------------------------------
 
-## 4.5 Plugins (Future)
+## 5. UI Layout
 
-Plugins may extend: - Custom validators - Domain-specific validation
-rules
+    File   Edit   Help                          Mode: CONFIG
 
-Plugins operate at validation level only. They must not bypass core
-contracts.
-
-------------------------------------------------------------------------
-
-# 5. Core Principle
-
-Zeno does NOT understand YAML.
-
-Zeno understands only:
-
-Intermediate Representation (IR)
-
-Everything must pass through IR. No layer may bypass IR.
+    +--------------------+--------------------------------------+
+    | Tree               | Tabs: [ Modify | Docs | Preview ]    |
+    | (Structure)        |                                      |
+    |                    | Right Workspace                      |
+    |                    |                                      |
+    +-----------------------------------------------------------+
+    | Status: ✔ Ready                                          |
+    +-----------------------------------------------------------+
 
 ------------------------------------------------------------------------
 
-# 6. Data Flow
+## 6. Left Panel -- Structure Authority
 
-## Open File
+-   Schema-controlled tree.
+-   No arbitrary key creation.
+-   Right-click context menu depends on node type.
+-   Add / Rename / Delete only if allowed by schema.
+-   Errors visually highlighted on nodes.
 
-Text\
-→ Adapter parses\
-→ IR created\
-→ Validation executed\
-→ UI rendered
-
-## Edit Document
-
-User action\
-→ Operation proposed\
-→ Schema validation\
-→ Operation applied to IR\
-→ Validation re-run\
-→ UI updated
-
-## Save File
-
-IR\
-→ Validation check\
-→ Adapter serializes\
-→ Text output
+Tree enforces structure.
 
 ------------------------------------------------------------------------
 
-# 7. Strict Invariants
+## 7. Right Panel -- Context Tabs
 
-1.  UI never modifies IR directly.
-2.  Schema defines behavior.
-3.  Core does not know file format.
-4.  Adapters do not validate.
-5.  Validation blocks illegal state.
-6.  Domain logic must exist only inside schema.
-7.  Zeno remains generic.
+### 7.1 Modify Tab
 
-------------------------------------------------------------------------
+Purpose: Mutate IR safely.
 
-# 8. Extensibility Model
+Contains: - Editable fields - Read button - Write button
 
-Zeno must allow: - New schemas - New adapters - New validators - New
-schema-driven UI behaviors
-
-Without modifying core logic.
+Rules: - No auto-apply. - Write performs validation. - Reject invalid
+state mutation.
 
 ------------------------------------------------------------------------
 
-# 9. Pre-Implementation Discipline
+### 7.2 Documentation Tab
 
-Before coding begins: - Architecture must be locked. - IR must be
-formally defined. - Schema specification must be defined.
+Purpose: Knowledge layer.
 
-No implementation starts without contract lock.
+Displays: - Field description - Intent notes - Export mapping notes -
+Constraints
+
+Read-only. Schema-driven.
 
 ------------------------------------------------------------------------
 
-END OF ARCHITECTURE.md v0.1
+### 7.3 Preview Tab
+
+Purpose: Runtime projection.
+
+Contains: - Generate button - Export preview
+
+Rules: - No live updating. - Generate must be explicit. - Generate
+performs full validation. - Preview updates only on success.
+
+------------------------------------------------------------------------
+
+## 8. Status Line
+
+Single-line status at bottom.
+
+Examples:
+
+✔ Ready\
+✔ Write successful\
+❌ Duplicate port 502\
+Generating preview...
+
+No validation popups. No modal interruptions.
+
+------------------------------------------------------------------------
+
+## 9. Validation Layers
+
+### 9.1 Write Phase Validation
+
+Triggered by Modify → Write.
+
+Validates: - Structural integrity - Required presence - Type
+correctness - `unique_by` rules (array-local)
+
+Purpose: Protect IR integrity.
+
+------------------------------------------------------------------------
+
+### 9.2 Generate Phase Validation
+
+Triggered by Preview → Generate.
+
+Validates: - Structural integrity (re-check) - Semantic rules -
+Cross-field constraints - Runtime export constraints
+
+Purpose: Protect runtime correctness.
+
+------------------------------------------------------------------------
+
+## 10. Schema Design Principles
+
+Schema is strict.
+
+-   Unknown keywords → error.
+-   `unique_by` allowed only on arrays.
+-   `unique_by` applies within array scope.
+-   Absence of `state_sealing` = disabled.
+-   Export mappings documented in comments only.
+-   No hidden behavior in schema grammar.
+
+Schema describes intent. Exporter maps intent to runtime structure.
+
+------------------------------------------------------------------------
+
+## 11. Error Handling Model
+
+-   Errors return path + message.
+-   UI highlights nodes.
+-   Status line displays summary.
+-   No popup validation errors.
+-   Preview remains unchanged on failure.
+
+------------------------------------------------------------------------
+
+## 12. Operation Lifecycle
+
+User Flow:
+
+    Edit → Write → (validate structure + uniqueness)
+    → Generate → (validate semantic + export)
+
+Mutation and projection are separated.
+
+Write protects the model.\
+Generate protects deployment.
+
+------------------------------------------------------------------------
+
+## 13. Design Evolution Notes
+
+Initial Direction: - Structural schema loader - Basic validator
+
+Evolved To: - Strict schema grammar - unique_by enforcement - Two-phase
+validation - No live preview - Explicit Read / Write / Generate -
+Status-line based feedback - Two-mode system (Schema / Config)
+
+Core philosophy remained constant: Make it hard for the user to make a
+mistake.
