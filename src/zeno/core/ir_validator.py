@@ -2,11 +2,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List
 
 from zeno.core.ir_node import IRNode
 from zeno.core.ir_types import IRType, ObjectType, ArrayType, ScalarType
 
+
+# ==========================================================
+# Validation Structures
+# ==========================================================
 
 @dataclass(frozen=True, slots=True)
 class IRValidationIssue:
@@ -20,24 +24,20 @@ class IRValidationError(Exception):
         super().__init__("\n".join(f"{i.path}: {i.message}" for i in issues))
 
 
-def validate(root: IRNode) -> None:
-    """
-    Validate an IRNode instance against its IRType tree.
+# ==========================================================
+# Public Entry
+# ==========================================================
 
-    v2.1 rules:
-    - Required enforcement (object.required list + scalar.required flag)
-    - Scalar type enforcement
-    - Enum enforcement (ScalarType.enum)
-    - Array item validation
-    - Unique sibling enforcement (ScalarType.unique == "sibling")
-        - Only enforced within arrays of objects
-        - Null/missing values are ignored
-    """
+def validate(root: IRNode) -> None:
     issues: List[IRValidationIssue] = []
     _validate_node(root, path="$", issues=issues)
     if issues:
         raise IRValidationError(issues)
 
+
+# ==========================================================
+# Core Dispatcher
+# ==========================================================
 
 def _validate_node(node: IRNode, *, path: str, issues: List[IRValidationIssue]) -> None:
     t = node.type_def
@@ -57,6 +57,10 @@ def _validate_node(node: IRNode, *, path: str, issues: List[IRValidationIssue]) 
     issues.append(IRValidationIssue(path, f"Unknown IRType: {type(t).__name__}"))
 
 
+# ==========================================================
+# Scalar Validation
+# ==========================================================
+
 def _validate_scalar(t: ScalarType, value: Any, *, path: str, issues: List[IRValidationIssue]) -> None:
     if value is None:
         if t.required:
@@ -71,60 +75,87 @@ def _validate_scalar(t: ScalarType, value: Any, *, path: str, issues: List[IRVal
         issues.append(IRValidationIssue(path, f"Value {value!r} not in enum {t.enum!r}."))
 
 
-def _validate_object(t: ObjectType, value: Any, *, path: str, issues: List[IRValidationIssue]) -> None:
-    if value is None:
-        if t.required:
-            issues.append(IRValidationIssue(path, f"Object missing required fields: {t.required!r}."))
-        return
+# ==========================================================
+# Object Validation
+# ==========================================================
 
+def _validate_object(t: ObjectType, value: Any, *, path: str, issues: List[IRValidationIssue]) -> None:
     if not isinstance(value, dict):
         issues.append(IRValidationIssue(path, f"Expected object (dict), got {type(value).__name__}."))
         return
 
-    # Required fields: must exist and not be null
+    # Required fields
     for req in t.required:
         if req not in value:
             issues.append(IRValidationIssue(f"{path}.{req}", "Field is required (missing)."))
             continue
-        child = value.get(req)
+
+        child = value[req]
         if not isinstance(child, IRNode):
-            issues.append(IRValidationIssue(f"{path}.{req}", "Internal error: required field is not an IRNode."))
+            issues.append(IRValidationIssue(f"{path}.{req}", "Internal error: not IRNode."))
             continue
+
         if child.value is None:
             issues.append(IRValidationIssue(f"{path}.{req}", "Field is required (value is null)."))
 
-    # Validate known properties (ignore extras for now)
+    # Validate properties
     for name, child_type in t.properties.items():
         child_node = value.get(name)
         if child_node is None:
             continue
+
         if not isinstance(child_node, IRNode):
-            issues.append(IRValidationIssue(f"{path}.{name}", "Internal error: property is not an IRNode."))
+            issues.append(IRValidationIssue(f"{path}.{name}", "Internal error: property is not IRNode."))
             continue
+
         _validate_node(child_node, path=f"{path}.{name}", issues=issues)
 
 
-def _validate_array(t: ArrayType, value: Any, *, path: str, issues: List[IRValidationIssue]) -> None:
-    if value is None:
-        return
+# ==========================================================
+# Array Validation
+# ==========================================================
 
+def _validate_array(t: ArrayType, value: Any, *, path: str, issues: List[IRValidationIssue]) -> None:
     if not isinstance(value, list):
         issues.append(IRValidationIssue(path, f"Expected array (list), got {type(value).__name__}."))
         return
 
-    # Validate each item recursively
+    length = len(value)
+
+    # minItems
+    if t.min_items is not None and length < t.min_items:
+        issues.append(
+            IRValidationIssue(
+                path,
+                f"Expected at least {t.min_items} items (minItems), got {length}.",
+            )
+        )
+
+    # maxItems
+    if t.max_items is not None and length > t.max_items:
+        issues.append(
+            IRValidationIssue(
+                path,
+                f"Expected at most {t.max_items} items (maxItems), got {length}.",
+            )
+        )
+
+    # Validate items
     for idx, item in enumerate(value):
         if not isinstance(item, IRNode):
-            issues.append(IRValidationIssue(f"{path}[{idx}]", "Internal error: array item is not an IRNode."))
+            issues.append(IRValidationIssue(f"{path}[{idx}]", "Internal error: array item is not IRNode."))
             continue
+
         _validate_node(item, path=f"{path}[{idx}]", issues=issues)
 
-    # Unique sibling enforcement applies only if:
-    # - Array items are objects
-    # - Object has scalar fields marked unique="sibling"
+    # Unique sibling enforcement (only for object arrays)
     if isinstance(t.items, ObjectType):
         _validate_unique_sibling_fields(t.items, value, path=path, issues=issues)
 
+
+# ==========================================================
+# Unique Sibling Enforcement
+# ==========================================================
 
 def _validate_unique_sibling_fields(
     obj_type: ObjectType,
@@ -133,8 +164,9 @@ def _validate_unique_sibling_fields(
     path: str,
     issues: List[IRValidationIssue],
 ) -> None:
-    # Collect scalar fields that request sibling uniqueness
+
     unique_fields: List[str] = []
+
     for field_name, field_type in obj_type.properties.items():
         if isinstance(field_type, ScalarType) and field_type.unique == "sibling":
             unique_fields.append(field_name)
@@ -142,19 +174,15 @@ def _validate_unique_sibling_fields(
     if not unique_fields:
         return
 
-    # For each field, detect duplicates ignoring None/missing
     for field_name in unique_fields:
-        seen: Dict[Any, int] = {}  # value -> first index
+        seen: Dict[Any, int] = {}
+
         for idx, item in enumerate(items):
-            if not isinstance(item.type_def, ObjectType):
-                continue
             if not isinstance(item.value, dict):
                 continue
 
             node = item.value.get(field_name)
-            if node is None:
-                continue
-            if not isinstance(node, IRNode):
+            if node is None or not isinstance(node, IRNode):
                 continue
 
             v = node.value
@@ -173,8 +201,11 @@ def _validate_unique_sibling_fields(
                 seen[v] = idx
 
 
+# ==========================================================
+# Type Matching
+# ==========================================================
+
 def _matches_scalar_type(type_name: str, value: Any) -> bool:
-    # Note: bool is subclass of int in Python, so check bool first.
     if type_name == "boolean":
         return isinstance(value, bool)
 

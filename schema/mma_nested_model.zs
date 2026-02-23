@@ -1,32 +1,10 @@
 # ============================================
 # ZENO SCHEMA – MMA Nested Configuration Model
 # ============================================
-#
-# STRUCTURAL VALIDATION ONLY.
-# This schema validates configuration SHAPE.
-# No value constraints are enforced at this phase.
-#
-# DESIGN INTENT
-# -------------
-# - port represents user intent.
-#   Export layer converts:
-#       port: 502
-#   into runtime:
-#       listen: ":502"
-#
-# - Policy is required per memory block (enforced later).
-# - Absence of `state_sealing` means state sealing is DISABLED.
-# - If `state_sealing` is present:
-#       area must be "coil" (validated later).
-# - notify ranges may overlap.
-# - source_ip must support IPv4, IPv6, and CIDR.
-#   (Validation implemented in value phase.)
-#
-# ============================================
 
-zeno_schema: 1
-application: mma
-format: nested
+zeno_schema: "2.1"
+application: "mma"
+format: "nested"
 
 root:
   type: object
@@ -40,15 +18,11 @@ root:
 
           id:
             type: string
-            # Logical listener identifier.
+            unique: sibling
 
           port:
             type: integer
-            # User-facing TCP port.
-            # Export converts:
-            #     port: 502
-            # into:
-            #     listen: ":502"
+            unique: sibling
 
           memory:
             type: array
@@ -58,17 +32,15 @@ root:
 
                 unit_id:
                   type: integer
-                  # Modbus Unit ID.
+                  unique: sibling
 
                 holding_registers:
                   type: object
                   properties:
                     start:
                       type: integer
-                      # Zero-based starting address.
                     count:
                       type: integer
-                      # Number of registers allocated.
 
                 input_registers:
                   type: object
@@ -106,40 +78,17 @@ root:
 
                           id:
                             type: string
-                            # Rule identifier.
+                            unique: sibling
 
                           source_ip:
                             type: array
                             items:
                               type: string
-                            # Each entry must be:
-                            # - IPv4 (192.168.1.10)
-                            # - IPv6 (2001:db8::1)
-                            # - CIDR  (192.168.1.0/24, ::/0)
-                            # Value validation implemented later.
 
                           allow_fc:
                             type: array
                             items:
                               type: integer
-                            # MMA Supported Modbus Function Codes:
-                            #
-                            #   1   Read Coils
-                            #   2   Read Discrete Inputs
-                            #   3   Read Holding Registers
-                            #   4   Read Input Registers
-                            #   5   Write Single Coil
-                            #   6   Write Single Register
-                            #   15  Write Multiple Coils
-                            #   16  Write Multiple Registers
-                            #
-                            # Only these values are valid.
-                            #
-                            # Example:
-                            #   allow_fc: [3, 4, 6, 16]
-                            #
-                            # Strict enforcement will be implemented
-                            # in the value validation phase.
 
 
     state_sealing:
@@ -148,9 +97,6 @@ root:
 
         area:
           type: string
-          # If present, must be "coil".
-          # If this block is absent entirely,
-          # state sealing is disabled.
 
         start:
           type: integer
@@ -174,7 +120,7 @@ root:
                 type: integer
               name:
                 type: string
-                # Logical label for event reporting.
+                unique: sibling
 
         input_registers:
           type: array
@@ -187,6 +133,7 @@ root:
                 type: integer
               name:
                 type: string
+                unique: sibling
 
         coils:
           type: array
@@ -199,6 +146,7 @@ root:
                 type: integer
               name:
                 type: string
+                unique: sibling
 
         discrete_inputs:
           type: array
@@ -211,6 +159,7 @@ root:
                 type: integer
               name:
                 type: string
+                unique: sibling
 
         influx:
           type: object
@@ -225,4 +174,3 @@ root:
               type: string
             measurement:
               type: string
-              # Optional. Export logic may define default behavior.
