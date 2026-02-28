@@ -65,7 +65,7 @@ class RightPanel(QWidget):
         br.setSpacing(8)
 
         self.btn_write = QPushButton("Write")
-        self.btn_generate_node = QPushButton("Generate Node")
+        self.btn_generate_node = QPushButton("Preview Node Output")
         self.btn_write.setEnabled(False)
         self.btn_generate_node.setEnabled(False)
 
@@ -84,7 +84,7 @@ class RightPanel(QWidget):
 
         self.preview_node = QTextEdit()
         self.preview_node.setReadOnly(True)
-        self.preview_node.setPlaceholderText("Node output appears after Generate Node.")
+        self.preview_node.setPlaceholderText("Node output appears here.")
         pbl.addWidget(self.preview_node)
 
         self.preview_section = CollapsibleSection("Output Preview", preview_body, collapsed=True)

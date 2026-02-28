@@ -1,6 +1,6 @@
 # CODE vs. DOCUMENTATION CONFLICTS
 
-**Status:** In Progress (4 of 7 RESOLVED)  
+**Status:** ✅ ALL RESOLVED (7 of 7 COMPLETE)  
 **Last Updated:** 2026-02-28  
 **Source of Truth:** Documentation (LOCKED)
 
@@ -152,66 +152,33 @@ This document tracks conflicts and resolutions between codebase and documentatio
 
 ---
 
-## CONFLICT 6: "Generate Node" Button Placement Ambiguity
+## ✅ RESOLVED: CONFLICT 7 (Missing Parse Function)
 
-**Priority:** P3 (UX clarity)
+**Resolution Date:** 2026-02-28 (Same as Conflict 3)  
+**Status:** CLOSED (See Conflict 3 for full details)
 
-**Documentation Authority:**
-- [ZENO_UI_Architecture_v2.3.md](ZENO_UI_Architecture_v2.3.md) Section 3.1: "Model Tab... Optional: Node-level read-only preview"
-- [ZENO_UI_Architecture_v2.3.md](ZENO_UI_Architecture_v2.3.md) Section 3.3: "Full-document Generate belongs exclusively to Preview tab"
-- [ZENO_UI_Architecture_v2.3.md](ZENO_UI_Architecture_v2.3.md) Section 8: "Generate Location Clarification (LOCKED)"
-
-**Documentation States:**
-- Model tab may include "node-level read-only preview"
-- Full projection must occur only in Preview tab
-- Generate belongs to Preview tab
-
-**Current Implementation:**
-```python
-# src/zeno/ui/right_panel.py (Model Tab)
-self.btn_generate_node = QPushButton("Generate Node")  # Ambiguous
-```
-
-**Ambiguity:**
-- Button name suggests generation action
-- Documentation allows "node-level preview" but doesn't call it "Generate"
-
-**Resolution Required:**
-1. Rename button to clarify it's preview-only: "Preview Node Output" or "Show Node"
-2. OR: Remove button entirely and show preview automatically on Write
-3. Ensure it doesn't confuse users expecting full Generate in Preview tab
+**Note:** This conflict was already resolved as part of Conflict 3 resolution. The yaml_adapter.py parse() function is fully implemented, tested, and working.
 
 ---
 
-## CONFLICT 7: Missing Parse Function (HIGH)
+## ✅ RESOLVED: CONFLICT 6 ("Generate Node" Button Naming Ambiguity)
 
-**Priority:** P0 (Blocking Open Config)
+**Resolution Date:** 2026-02-28  
+**Status:** CLOSED
 
-**Documentation Authority:**
-- [FILE_MENU_SPEC.md](FILE_MENU_SPEC.md) Section 5.2: Open Config
-- [OPERATION_MODEL_v2.0.md](OPERATION_MODEL_v2.0.md) Section 4.3: "Config parsed into IR via adapter"
+**Changes Applied:**
+1. **Renamed button for clarity:** `src/zeno/ui/right_panel.py`
+   - ✗ Old: `QPushButton("Generate Node")` (line 68)
+   - ✓ New: `QPushButton("Preview Node Output")` (clarifies it's read-only)
 
-**Documentation States:**
-- Open Config must parse YAML/config file into IR
-- Adapter provides parse capability
+2. **Updated placeholder text:**
+   - ✗ Old: "Node output appears after Generate Node."
+   - ✓ New: "Node output appears here."
 
-**Current Implementation:**
-```python
-# src/zeno/adapters/yaml_adapter.py
-# Only serialize() exists
-# parse() is MISSING
-```
-
-**Impact:**
-- Open Config menu item cannot function
-- Users cannot load existing configuration files
-- Core workflow broken
-
-**Resolution Required:**
-1. Implement `def parse(yaml_text: str, schema: SchemaType) -> Node`
-2. Create Node tree with proper UUID assignment
-3. Preserve ordering from YAML source
-4. Link nodes correctly using IRStore
+**Result:**
+- ✓ Button name clarifies it's a preview (not generation)
+- ✓ No confusion with full-document "Generate Full Config" in Preview tab
+- ✓ Aligns with documentation's distinction between node-level preview and full generation
 
 ---
 
