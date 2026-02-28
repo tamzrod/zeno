@@ -1,13 +1,23 @@
-# CONFIG_MODE_BEHAVIOR.md
+# ZENO -- Configuration Editing Behavior
+
+Version: 2.0\
+Status: ALIGNED WITH DOCUMENT-CENTRIC ARCHITECTURE
+
+------------------------------------------------------------------------
 
 ## Scope
 
-This document defines the behavior of **Config Mode** in Zeno.
+This document defines the deterministic configuration editing behavior
+in ZENO.
 
-Config Mode is responsible for deterministic configuration editing based
-strictly on schema design.
+ZENO is document-centric.
 
-Schema Mode is out of scope.
+There are no manual modes.
+
+Editing behavior is derived strictly from:
+
+-   Active Schema
+-   Active Document
 
 ------------------------------------------------------------------------
 
@@ -25,16 +35,18 @@ Schema Mode is out of scope.
 
 ## Schema → IR Expansion Rules
 
-When creating a new configuration:
+When creating a new configuration from a loaded schema:
 
 -   Root is OBJECT.
 -   For each schema property:
     -   type: object → create OBJECT node.
     -   type: array → create LIST node (empty).
-    -   scalar types (string, integer, boolean, etc.) → create SCALAR
-        node with value=None.
+    -   scalar types (string, integer, number, boolean) → create SCALAR
+        node with value = null.
 -   Arrays do not auto-create items.
 -   Expansion is recursive for objects only.
+-   No schema-defined property may be skipped.
+-   No implicit defaults unless explicitly defined in schema metadata.
 
 ------------------------------------------------------------------------
 
@@ -46,7 +58,8 @@ Allowed actions: - Add child property defined in schema. - Remove node
 (except root).
 
 Rules: - No duplicate object keys. - Only properties defined in schema
-are allowed. - No arbitrary fields.
+are allowed. - No arbitrary fields. - Removal must unlink before
+deletion.
 
 ### LIST Node
 
@@ -54,13 +67,15 @@ Allowed actions: - Add list item (type derived from
 schema.items.type). - Remove item. - Move item up. - Move item down.
 
 Rules: - LIST items do not have object keys. - Order is significant and
-preserved. - Reordering changes priority.
+preserved. - Reordering changes priority intentionally. - No implicit
+sorting.
 
 ### SCALAR Node
 
 Allowed actions: - Edit value only.
 
-Rules: - Type enforcement based on schema. - No children allowed.
+Rules: - Type enforcement based on schema. - No children allowed. - No
+implicit coercion beyond schema-declared type.
 
 ------------------------------------------------------------------------
 
@@ -68,10 +83,14 @@ Rules: - Type enforcement based on schema. - No children allowed.
 
 Each IR node must be resolvable to its schema definition.
 
-This can be achieved by: - Attaching schema reference metadata during
-expansion, or - Resolving schema path dynamically based on IR path.
+This may be achieved by:
+
+-   Attaching schema reference metadata during expansion, OR
+-   Resolving schema path dynamically based on IR path.
 
 UI must never guess allowed structure.
+
+All structural decisions must be schema-derived.
 
 ------------------------------------------------------------------------
 
@@ -80,19 +99,35 @@ UI must never guess allowed structure.
 -   Tree rendering reflects IR structure exactly.
 -   All operations go through OperationProcessor.
 -   No direct mutation of IR nodes from UI.
--   Removal must unlink before deletion.
 -   Root cannot be deleted.
+-   Arrays never auto-expand.
+-   No structural mutation occurs outside Write lifecycle.
 
 ------------------------------------------------------------------------
 
 ## Out of Scope
 
--   Validation expansion beyond structural integrity.
--   Excel import/export.
--   Schema editing.
--   Conditional formatting.
--   Styling rules.
+-   Validation beyond structural integrity (handled by Validation
+    Engine).
+-   Runtime export behavior.
+-   Wizard-specific flow logic.
+-   Theming or styling rules.
+-   Schema authoring mechanics (covered elsewhere).
 
 ------------------------------------------------------------------------
 
-End of document.
+## Alignment Statement
+
+This document is aligned with:
+
+-   Architecture Lock
+-   Operation Model v2.0
+-   UI Architecture v2.3
+-   Schema Specification
+-   Validation Engine Specification
+
+ZENO editing behavior is schema-driven, deterministic, and mode-free.
+
+------------------------------------------------------------------------
+
+End of Document.
