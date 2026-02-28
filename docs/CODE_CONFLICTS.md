@@ -34,35 +34,22 @@ This document tracks conflicts and resolutions between codebase and documentatio
 
 ---
 
-## CONFLICT 2: Missing `key` Field in IR Documentation
+## ✅ RESOLVED: CONFLICT 2 (Missing `key` Field in Documentation)
 
-**Priority:** P1 (Documentation fix)
+**Resolution Date:** 2026-02-28  
+**Status:** CLOSED
 
-**Documentation Authority:**
-- [IR_v0.1.md](IR_v0.1.md) Section 3
+**Changes Applied:**
+1. Updated [IR_v0.1.md](IR_v0.1.md) Section 3 to include `key` field
+2. Added clarification: Object children use `key` for property names; list children and root have `key=None`
 
-**Documentation States:**
-Node model lists: `id`, `type`, `parent_id`, `children`, `value`, `metadata`
+**Result:**
+- ✓ Documentation now matches implementation
+- ✓ `key` field is formally part of Node model specification
 
-Section 4.1 states: "Keys are stored explicitly" for Object nodes
+---
 
-**Current Implementation:**
-```python
-# src/zeno/core/node.py
-@dataclass
-class Node:
-    ...
-    key: Optional[str] = None  # ← Essential field, not in docs
-```
-
-**Impact:**
-Object children need `key` to track property names. This is implemented but not documented.
-
-**Resolution Required:**
-1. Update [IR_v0.1.md](IR_v0.1.md) Section 3 to include `key: Optional[str]` field
-2. Add explanation: "Object children use key to store property name; List children have key=None"
-
-
+## CONFLICT 3: Adapter Contract Violated (CRITICAL)
 
 **Priority:** P1 (Documentation fix)
 

@@ -43,10 +43,11 @@ Every document is represented as a single Root Node.
 Each node in IR must contain:
 
 -   `id` (stable unique identifier, UUID)
--   `type` (object \| list \| scalar)
+-   `type` (object | list | scalar)
 -   `parent_id` (nullable for root)
--   `children` (ordered, for object/list)
--   `value` (for scalar nodes only)
+-   `key` (optional string; used only for object children to store property name; always None for list children and root)
+-   `children` (ordered list of UUIDs, for object/list nodes only)
+-   `value` (for scalar nodes only; null for object/list)
 -   `metadata` (optional container for non-structural information)
 
 ------------------------------------------------------------------------
