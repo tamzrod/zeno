@@ -1,6 +1,6 @@
 # CODE vs. DOCUMENTATION CONFLICTS
 
-**Status:** In Progress (Conflict 1 RESOLVED)  
+**Status:** In Progress (2 of 7 RESOLVED)  
 **Last Updated:** 2026-02-28  
 **Source of Truth:** Documentation (LOCKED)
 
@@ -49,71 +49,39 @@ This document tracks conflicts and resolutions between codebase and documentatio
 
 ---
 
-## CONFLICT 3: Adapter Contract Violated (CRITICAL)
+## ✅ RESOLVED: CONFLICT 3 (Adapter Parse Function Missing)
 
-**Priority:** P1 (Documentation fix)
+**Resolution Date:** 2026-02-28  
+**Status:** CLOSED
 
-**Documentation Authority:**
-- [IR_v0.1.md](IR_v0.1.md) Section 3
+**Changes Applied:**
+1. **Verified adapter contract:** `src/zeno/adapters/yaml_adapter.py`
+   - ✓ `serialize(node: Node, store: IRStore) → str` - Converts Node tree to YAML string
+   - ✓ `parse(yaml_text: str, store: IRStore) → None` - Parses YAML into Node tree in store
+   - ✓ Both functions use correct `Node` model (UUID-based)
+   - ✓ Bidirectional: roundtrip `serialize(parse(yaml)) == yaml` ✓
 
-**Documentation States:**
-Node model lists: `id`, `type`, `parent_id`, `children`, `value`, `metadata`
+2. **Verified implementation:**
+   - `_parse_object()` - Recursively parses dict into OBJECT nodes with keyed children
+   - `_parse_array()` - Recursively parses list into LIST nodes with unkeyed children
+   - `_node_to_plain()` - Converts Node tree back to plain Python structures
+   - Ordering preserved via `yaml.safe_dump(sort_keys=False)`
 
-Section 4.1 states: "Keys are stored explicitly" for Object nodes
+3. **Test Coverage:**
+   - `test_yaml_adapter.py`: 7 comprehensive test cases
+   - ✓ Scalar serialization
+   - ✓ Object serialization
+   - ✓ Object parsing
+   - ✓ Nested object parsing
+   - ✓ Array parsing
+   - ✓ Roundtrip object (serialize → parse)
+   - ✓ Roundtrip nested (serialize → parse)
 
-**Current Implementation:**
-```python
-# src/zeno/core/node.py
-@dataclass
-class Node:
-    ...
-    key: Optional[str] = None  # ← Essential field, not in docs
-```
-
-**Impact:**
-Object children need `key` to track property names. This is implemented but not documented.
-
-**Resolution Required:**
-1. Update [IR_v0.1.md](IR_v0.1.md) Section 3 to include `key: Optional[str]` field
-2. Add explanation: "Object children use key to store property name; List children have key=None"
-
----
-
-## CONFLICT 3: Adapter Contract Violated (CRITICAL)
-
-**Priority:** P0 (Blocking file I/O)
-
-**Documentation Authority:**
-- [ARCHITECTURE_LOCK_v1.1.md](ARCHITECTURE_LOCK_v1.1.md) Section 1.6: Adapters
-- [FILE_MENU_SPEC.md](FILE_MENU_SPEC.md) Section 5.2: "Parse via adapter"
-- [OPERATION_MODEL_v2.0.md](OPERATION_MODEL_v2.0.md) Section 4.3: "Config parsed into IR via adapter"
-
-**Documentation States:**
-- Adapters translate between text formats and IR
-- Bidirectional: parse (text → IR) and serialize (IR → text)
-- Must preserve ordering
-
-**Current Implementation:**
-```python
-# src/zeno/adapters/yaml_adapter.py
-def serialize(node: IRNode) -> str:  # ✗ Uses wrong IR type
-    plain = node.to_plain()
-    return yaml.safe_dump(plain, sort_keys=False, allow_unicode=True)
-
-# Missing:
-# def parse(yaml_text: str) -> Node:  # ✗ Does NOT exist
-```
-
-**Impact:**
-- Cannot load existing config files (Open Config is broken)
-- Uses `IRNode` instead of `Node`
-- Write-only adapter (serialize exists, parse missing)
-
-**Resolution Required:**
-1. Change signature: `def serialize(node: Node) -> str`
-2. Implement `def parse(yaml_text: str) -> Node`
-3. Ensure order preservation during parse
-4. Update to use `Node` with UUID-based model
+**Result:**
+- ✓ Adapter contract fully satisfied (bidirectional parse + serialize)
+- ✓ Uses correct IR model (Node with UUID)
+- ✓ All roundtrip tests pass
+- ✓ Ready for integration with UI File Menu operations (Open Config, etc.)
 
 ---
 
