@@ -1,6 +1,6 @@
 # CODE vs. DOCUMENTATION CONFLICTS
 
-**Status:** In Progress (2 of 7 RESOLVED)  
+**Status:** In Progress (3 of 7 RESOLVED)  
 **Last Updated:** 2026-02-28  
 **Source of Truth:** Documentation (LOCKED)
 
@@ -85,34 +85,42 @@ This document tracks conflicts and resolutions between codebase and documentatio
 
 ---
 
-## CONFLICT 4: Validator Uses Wrong IR Type (CRITICAL)
+## ✅ RESOLVED: CONFLICT 4 (Validator Uses Wrong IR Type)
 
-**Priority:** P0 (Blocking validation)
+**Resolution Date:** 2026-02-28  
+**Status:** CLOSED
 
-**Documentation Authority:**
-- [VALIDATION_ENGINE.md](VALIDATION_ENGINE.md): Validates IR
-- [IR_v0.1.md](IR_v0.1.md): Defines IR as UUID-based Node
+**Changes Applied:**
+1. **Verified validator protocol design:** `src/zeno/schema/ir_validator.py`
+   - ✓ Abstract `IRNodeView` protocol defines tree-reading interface
+   - ✓ Decoupled from concrete Node model
+   - ✓ `validate(root_view: IRNodeView) → None` accepts any IR implementation
 
-**Documentation States:**
-- Validation engine validates IR
-- IR is UUID-based Node model
+2. **Verified adapter:** `IRStoreView`
+   - ✓ Implements `IRNodeView` protocol for Node+IRStore
+   - ✓ Handles OBJECT nodes (keyed children iteration)
+   - ✓ Handles LIST nodes (unkeyed children iteration)
+   - ✓ Handles SCALAR nodes (value access)
+   - ✓ Correctly navigates UUID-based tree structure
 
-**Current Implementation:**
-```python
-# src/zeno/schema/ir_validator.py
-def validate(root: IRNode) -> None:  # ✗ Uses IRNode, not Node
-    ...
-```
+3. **Verified semantic validator:** `src/zeno/schema/ir_semantic_validator.py`
+   - ✓ Uses `IRNodeView` protocol (not specific IR type)
+   - ✓ Schema-aware validation via protocol
+   - ✓ Can validate against any IR implementation
 
-**Impact:**
-- Cannot validate core engine's IR (`Node` instances)
-- Write and Generate validation phases cannot function
-- Type mismatch prevents integration
+4. **Test Coverage:**
+   - `test_validator.py`: 5 integration tests
+   - ✓ Valid object validation
+   - ✓ Valid nested object validation
+   - ✓ Valid array validation
+   - ✓ Store-level constraint enforcement (duplicate keys)
+   - ✓ Complex structure validation with protocol adapter
 
-**Resolution Required:**
-1. Update validator to accept `Node` instead of `IRNode`
-2. Navigate tree using `node.children` (list of UUIDs) and `IRStore`
-3. Align with schema-driven validation rules from documentation
+**Result:**
+- ✓ Validator uses protocol (not concrete IRNode type)
+- ✓ Protocol implementation works with Node+IRStore
+- ✓ Semantic validator ready for schema-based validation
+- ✓ No type mismatches; full integration possible
 
 ---
 
