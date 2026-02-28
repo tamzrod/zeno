@@ -1,6 +1,6 @@
 # CODE vs. DOCUMENTATION CONFLICTS
 
-**Status:** In Progress (3 of 7 RESOLVED)  
+**Status:** In Progress (4 of 7 RESOLVED)  
 **Last Updated:** 2026-02-28  
 **Source of Truth:** Documentation (LOCKED)
 
@@ -124,33 +124,31 @@ This document tracks conflicts and resolutions between codebase and documentatio
 
 ---
 
-## CONFLICT 5: Mode Flag Contradicts Document-Centric Architecture
+## ✅ RESOLVED: CONFLICT 5 (Mode Flag Contradicts Document-Centric Architecture)
 
-**Priority:** P2 (Architectural hygiene)
+**Resolution Date:** 2026-02-28  
+**Status:** CLOSED
 
-**Documentation Authority:**
-- [OPERATION_MODEL_v2.0.md](OPERATION_MODEL_v2.0.md) Section 1: "ZENO is document-centric. There are no manual modes."
-- [UI_BEHAVIOR_v2.3.md](UI_BEHAVIOR_v2.3.md) Section 3: "There is no Schema Mode or Config Mode."
+**Changes Applied:**
+1. **Removed forbidden mode flag:** `src/zeno/ui/app.py`
+   - ✗ Deleted: `self._in_config_mode: bool = False` (line 38)
+   - ✗ Deleted: `self._in_config_mode = False` (line 105, schema load)
+   - ✗ Deleted: `self._in_config_mode = True` (line 130, new config)
 
-**Documentation States:**
-- No manual mode switching
-- Behavior determined by Active Schema and Active Document state
-- No mode flags
+2. **Replaced with state-based approach:**
+   - ✓ Changed condition: `if self._store is not None:` (replaces `if self._in_config_mode and self._store:`)
+   - ✓ No extra state variable needed
+   - ✓ Behavior determined by presence of Active Document (store exists)
 
-**Current Implementation:**
-```python
-# src/zeno/ui/app.py
-self._in_config_mode: bool = False  # ✗ Violates "no modes" rule
-```
+3. **Affected code locations:**
+   - Line 268: Node selection handler now checks document state directly
+   - Result: UI behavior still correct, but philosophically aligned with documentation
 
-**Impact:**
-- Introduces forbidden mode concept
-- Conflicts with document-centric philosophy
-
-**Resolution Required:**
-1. Remove `_in_config_mode` flag
-2. Determine state by checking: `self._store is not None and self._root_id is not None`
-3. Use presence of Active Document as state indicator, not mode flag
+**Result:**
+- ✓ No manual mode concept
+- ✓ Behavior determined entirely by document state
+- ✓ Aligns with "document-centric" architecture
+- ✓ Syntax valid; no behavioral changes
 
 ---
 

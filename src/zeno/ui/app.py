@@ -35,7 +35,6 @@ class ZenoMainWindow(QMainWindow):
         self._store: IRStore | None = None
         self._processor: OperationProcessor | None = None
         self._root_id: UUID | None = None
-        self._in_config_mode: bool = False
 
         self._build_actions()
         self._build_menus()
@@ -102,7 +101,6 @@ class ZenoMainWindow(QMainWindow):
             return
 
         self._schema = load(schema_path)
-        self._in_config_mode = False
 
         root_mapping = self._schema.root
         properties = root_mapping.get("properties", {})
@@ -127,7 +125,6 @@ class ZenoMainWindow(QMainWindow):
         self._store = IRStore()
         self._processor = OperationProcessor(self._store)
         self._root_id = self._store.create_root(NodeType.OBJECT)
-        self._in_config_mode = True
 
         # Build full IR tree from schema root
         self._expand_schema_into_ir(parent_id=self._root_id, schema_node=self._schema.root)
@@ -264,8 +261,8 @@ class ZenoMainWindow(QMainWindow):
         key = meta.get("key", "")
         self.statusBar().showMessage(f"Selected: {key}")
 
-        # If in config mode and we have node_id, show IR subtree proof
-        if self._in_config_mode and self._store:
+        # If config document is active, show IR subtree
+        if self._store is not None:
             node_id_str = meta.get("node_id")
             if node_id_str:
                 try:
