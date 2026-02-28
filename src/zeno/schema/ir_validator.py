@@ -1,190 +1,140 @@
-# src/zeno/core/ir_validator.py
+# src/zeno/schema/ir_validator.py
+
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Iterable, List, Tuple
+from uuid import UUID
 
-from zeno.core.ir_node import IRNode
-from zeno.core.ir_types import IRType, ObjectType, ArrayType, ScalarType
+from zeno.core.node import Node
+from zeno.core.types import NodeType
+from zeno.core.store import IRStore
 
+
+# ============================================================
+# Protocol for tree traversal
+# ============================================================
+
+class IRNodeView(ABC):
+    """Abstract protocol for reading IR nodes."""
+
+    @abstractmethod
+    def node_type(self) -> str:
+        """Return: 'object', 'list', or 'scalar'"""
+        pass
+
+    @abstractmethod
+    def scalar_value(self) -> Any:
+        """Return scalar value"""
+        pass
+
+    @abstractmethod
+    def object_items(self) -> Iterable[Tuple[str, IRNodeView]]:
+        """Return: (key, child_view) pairs"""
+        pass
+
+    @abstractmethod
+    def list_items(self) -> Iterable[IRNodeView]:
+        """Return: child views"""
+        pass
+
+
+# ============================================================
+# Adapter: IRStore + Node → IRNodeView
+# ============================================================
+
+class IRStoreView(IRNodeView):
+    """Bridge IRStore + Node tree to protocol."""
+
+    def __init__(self, store: IRStore, node_id: UUID) -> None:
+        self._store = store
+        self._node_id = node_id
+
+    def node_type(self) -> str:
+        node = self._store.get_node(self._node_id)
+        if node.type == NodeType.OBJECT:
+            return "object"
+        if node.type == NodeType.LIST:
+            return "list"
+        return "scalar"
+
+    def scalar_value(self) -> Any:
+        node = self._store.get_node(self._node_id)
+        return node.value
+
+    def object_items(self) -> Iterable[Tuple[str, IRNodeView]]:
+        node = self._store.get_node(self._node_id)
+        for child_id in node.children:
+            child = self._store.get_node(child_id)
+            yield child.key or "", IRStoreView(self._store, child_id)
+
+    def list_items(self) -> Iterable[IRNodeView]:
+        node = self._store.get_node(self._node_id)
+        for child_id in node.children:
+            yield IRStoreView(self._store, child_id)
+
+
+# ============================================================
+# Error Types
+# ============================================================
 
 @dataclass(frozen=True, slots=True)
-class IRValidationIssue:
+class ValidationIssue:
     path: str
     message: str
 
 
-class IRValidationError(Exception):
-    def __init__(self, issues: List[IRValidationIssue]) -> None:
+class ValidationError(Exception):
+    def __init__(self, issues: List[ValidationIssue]) -> None:
         self.issues = issues
         super().__init__("\n".join(f"{i.path}: {i.message}" for i in issues))
 
 
-def validate(root: IRNode) -> None:
-    """
-    Validate an IRNode instance against its IRType tree.
+# ============================================================
+# Validation Entry
+# ============================================================
 
-    v2.1 rules:
-    - Required enforcement (object.required list + scalar.required flag)
-    - Scalar type enforcement
-    - Enum enforcement (ScalarType.enum)
-    - Array item validation
-    - Unique sibling enforcement (ScalarType.unique == "sibling")
-        - Only enforced within arrays of objects
-        - Null/missing values are ignored
-    """
-    issues: List[IRValidationIssue] = []
-    _validate_node(root, path="$", issues=issues)
+def validate(root_view: IRNodeView) -> None:
+    """Validate an IR node tree structure."""
+    issues: List[ValidationIssue] = []
+    _validate_node(root_view, path="$", issues=issues)
     if issues:
-        raise IRValidationError(issues)
+        raise ValidationError(issues)
 
 
-def _validate_node(node: IRNode, *, path: str, issues: List[IRValidationIssue]) -> None:
-    t = node.type_def
+# ============================================================
+# Recursive Validator
+# ============================================================
 
-    if isinstance(t, ScalarType):
-        _validate_scalar(t, node.value, path=path, issues=issues)
+def _validate_node(view: IRNodeView, *, path: str, issues: List[ValidationIssue]) -> None:
+    t = view.node_type()
+
+    if t == "scalar":
         return
 
-    if isinstance(t, ObjectType):
-        _validate_object(t, node.value, path=path, issues=issues)
+    if t == "object":
+        _validate_object(view, path=path, issues=issues)
         return
 
-    if isinstance(t, ArrayType):
-        _validate_array(t, node.value, path=path, issues=issues)
+    if t == "list":
+        _validate_list(view, path=path, issues=issues)
         return
 
-    issues.append(IRValidationIssue(path, f"Unknown IRType: {type(t).__name__}"))
+    issues.append(ValidationIssue(path, f"Unknown node type: {t}"))
 
 
-def _validate_scalar(t: ScalarType, value: Any, *, path: str, issues: List[IRValidationIssue]) -> None:
-    if value is None:
-        if t.required:
-            issues.append(IRValidationIssue(path, "Value is required."))
-        return
+def _validate_object(view: IRNodeView, *, path: str, issues: List[ValidationIssue]) -> None:
+    seen_keys = set()
 
-    if not _matches_scalar_type(t.name, value):
-        issues.append(IRValidationIssue(path, f"Expected {t.name}, got {type(value).__name__}."))
-        return
+    for key, child_view in view.object_items():
+        if key in seen_keys:
+            issues.append(ValidationIssue(f"{path}.{key}", f"Duplicate key: {key}"))
+        seen_keys.add(key)
 
-    if t.enum is not None and value not in t.enum:
-        issues.append(IRValidationIssue(path, f"Value {value!r} not in enum {t.enum!r}."))
+        _validate_node(child_view, path=f"{path}.{key}", issues=issues)
 
 
-def _validate_object(t: ObjectType, value: Any, *, path: str, issues: List[IRValidationIssue]) -> None:
-    if value is None:
-        if t.required:
-            issues.append(IRValidationIssue(path, f"Object missing required fields: {t.required!r}."))
-        return
-
-    if not isinstance(value, dict):
-        issues.append(IRValidationIssue(path, f"Expected object (dict), got {type(value).__name__}."))
-        return
-
-    # Required fields: must exist and not be null
-    for req in t.required:
-        if req not in value:
-            issues.append(IRValidationIssue(f"{path}.{req}", "Field is required (missing)."))
-            continue
-        child = value.get(req)
-        if not isinstance(child, IRNode):
-            issues.append(IRValidationIssue(f"{path}.{req}", "Internal error: required field is not an IRNode."))
-            continue
-        if child.value is None:
-            issues.append(IRValidationIssue(f"{path}.{req}", "Field is required (value is null)."))
-
-    # Validate known properties (ignore extras for now)
-    for name, child_type in t.properties.items():
-        child_node = value.get(name)
-        if child_node is None:
-            continue
-        if not isinstance(child_node, IRNode):
-            issues.append(IRValidationIssue(f"{path}.{name}", "Internal error: property is not an IRNode."))
-            continue
-        _validate_node(child_node, path=f"{path}.{name}", issues=issues)
-
-
-def _validate_array(t: ArrayType, value: Any, *, path: str, issues: List[IRValidationIssue]) -> None:
-    if value is None:
-        return
-
-    if not isinstance(value, list):
-        issues.append(IRValidationIssue(path, f"Expected array (list), got {type(value).__name__}."))
-        return
-
-    # Validate each item recursively
-    for idx, item in enumerate(value):
-        if not isinstance(item, IRNode):
-            issues.append(IRValidationIssue(f"{path}[{idx}]", "Internal error: array item is not an IRNode."))
-            continue
-        _validate_node(item, path=f"{path}[{idx}]", issues=issues)
-
-    # Unique sibling enforcement applies only if:
-    # - Array items are objects
-    # - Object has scalar fields marked unique="sibling"
-    if isinstance(t.items, ObjectType):
-        _validate_unique_sibling_fields(t.items, value, path=path, issues=issues)
-
-
-def _validate_unique_sibling_fields(
-    obj_type: ObjectType,
-    items: List[IRNode],
-    *,
-    path: str,
-    issues: List[IRValidationIssue],
-) -> None:
-    # Collect scalar fields that request sibling uniqueness
-    unique_fields: List[str] = []
-    for field_name, field_type in obj_type.properties.items():
-        if isinstance(field_type, ScalarType) and field_type.unique == "sibling":
-            unique_fields.append(field_name)
-
-    if not unique_fields:
-        return
-
-    # For each field, detect duplicates ignoring None/missing
-    for field_name in unique_fields:
-        seen: Dict[Any, int] = {}  # value -> first index
-        for idx, item in enumerate(items):
-            if not isinstance(item.type_def, ObjectType):
-                continue
-            if not isinstance(item.value, dict):
-                continue
-
-            node = item.value.get(field_name)
-            if node is None:
-                continue
-            if not isinstance(node, IRNode):
-                continue
-
-            v = node.value
-            if v is None:
-                continue  # ignore null/unset
-
-            if v in seen:
-                first_idx = seen[v]
-                issues.append(
-                    IRValidationIssue(
-                        f"{path}[{idx}].{field_name}",
-                        f"Duplicate value {v!r}; already used at {path}[{first_idx}].{field_name}.",
-                    )
-                )
-            else:
-                seen[v] = idx
-
-
-def _matches_scalar_type(type_name: str, value: Any) -> bool:
-    # Note: bool is subclass of int in Python, so check bool first.
-    if type_name == "boolean":
-        return isinstance(value, bool)
-
-    if type_name == "integer":
-        return isinstance(value, int) and not isinstance(value, bool)
-
-    if type_name == "number":
-        return isinstance(value, (int, float)) and not isinstance(value, bool)
-
-    if type_name == "string":
-        return isinstance(value, str)
-
-    return False
+def _validate_list(view: IRNodeView, *, path: str, issues: List[ValidationIssue]) -> None:
+    for idx, child_view in enumerate(view.list_items()):
+        _validate_node(child_view, path=f"{path}[{idx}]", issues=issues)

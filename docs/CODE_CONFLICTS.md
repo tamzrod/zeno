@@ -1,76 +1,68 @@
 # CODE vs. DOCUMENTATION CONFLICTS
 
-**Status:** Unresolved  
-**Date:** 2026-02-28  
+**Status:** In Progress (Conflict 1 RESOLVED)  
+**Last Updated:** 2026-02-28  
 **Source of Truth:** Documentation (LOCKED)
 
-This document tracks conflicts between the current codebase and the authoritative documentation.
-
-All code must be refactored to align with the documentation specifications.
+This document tracks conflicts and resolutions between codebase and documentation.
 
 ---
 
-## CONFLICT 1: Dual IR Models (CRITICAL — BLOCKING)
+## ✅ RESOLVED: CONFLICT 1 (Dual IR Models)
 
-**Priority:** P0 (Must resolve first)
+**Resolution Date:** 2026-02-28  
+**Status:** CLOSED
 
-**Documentation Authority:**
-- [IR_v0.1.md](IR_v0.1.md) Section 3: Node Model
-- [ARCHITECTURE_LOCK_v1.1.md](ARCHITECTURE_LOCK_v1.1.md) Section 2: IR Contract
+**Changes Applied:**
+1. **Deleted legacy IR model files:**
+   - `src/zeno/core/ir_node.py` (removed type-def IRNode)
+   - `src/zeno/core/ir_types.py` (removed ScalarType, ObjectType, ArrayType)
+   - `src/zeno/core/ir_validator.py` (removed old validator)
+   - `src/zeno/core/ir_view.py` (removed deprecated adapter)
 
-**Documentation States:**
-Each node in IR must contain:
-- `id` (stable unique identifier, UUID)
-- `type` (object | list | scalar)
-- `parent_id` (nullable for root)
-- `children` (ordered, for object/list)
-- `value` (for scalar nodes only)
-- `metadata` (optional container for non-structural information)
+2. **Migrated to UUID-based Node model:**
+   - `src/zeno/adapters/yaml_adapter.py`: New serialize/parse functions using `Node + IRStore`
+   - `src/zeno/cli/test_engine.py`: Updated to use `Node`, `IRStore`, `OperationProcessor`
+   - `src/zeno/schema/ir_validator.py`: Protocol-based validation via `IRNodeView` (decoupled)
+   - `src/zeno/schema/binder.py`: No longer needed (kept for reference)
 
-**Current Implementation:**
-
-**TWO incompatible IR models exist:**
-
-1. **src/zeno/core/node.py** — UUID-based (matches documentation):
-   ```python
-   @dataclass
-   class Node:
-       id: UUID
-       type: NodeType
-       parent_id: Optional[UUID]
-       key: Optional[str]
-       value: Optional[Any]
-       children: list[UUID]
-       metadata: dict[str, Any]
-   ```
-   ✓ Used by: `IRStore`, `OperationProcessor`, `app.py`
-
-2. **src/zeno/core/ir_node.py** — Type-definition model (DOES NOT match documentation):
-   ```python
-   @dataclass(slots=True)
-   class IRNode:
-       type_def: IRType
-       value: Any = None
-   ```
-   - Missing: `id`, `parent_id`, `children`, `metadata`
-   - Uses `type_def: IRType` instead of `type: NodeType`
-   
-   ✗ Used by: `yaml_adapter.py`, `ir_validator.py`, schema rendering
-
-**Impact:**
-- Adapters cannot communicate with core engine
-- Validators cannot validate core IR
-- System is fundamentally split
-
-**Resolution Required:**
-1. Delete `src/zeno/core/ir_node.py` and `src/zeno/core/ir_types.py`
-2. Migrate all code using `IRNode` to use `Node`
-3. Update `yaml_adapter.py` to serialize/parse `Node`
-4. Update `ir_validator.py` to validate `Node`
+3. **Result:**
+   - ✓ Single canonical IR: `Node` (UUID-based, matches documentation)
+   - ✓ Adapter bidirectional (parse + serialize)
+   - ✓ Validator uses protocol bridge (IRNodeView) for flexibility
+   - ✓ All core components now unified on same IR model
 
 ---
 
 ## CONFLICT 2: Missing `key` Field in IR Documentation
+
+**Priority:** P1 (Documentation fix)
+
+**Documentation Authority:**
+- [IR_v0.1.md](IR_v0.1.md) Section 3
+
+**Documentation States:**
+Node model lists: `id`, `type`, `parent_id`, `children`, `value`, `metadata`
+
+Section 4.1 states: "Keys are stored explicitly" for Object nodes
+
+**Current Implementation:**
+```python
+# src/zeno/core/node.py
+@dataclass
+class Node:
+    ...
+    key: Optional[str] = None  # ← Essential field, not in docs
+```
+
+**Impact:**
+Object children need `key` to track property names. This is implemented but not documented.
+
+**Resolution Required:**
+1. Update [IR_v0.1.md](IR_v0.1.md) Section 3 to include `key: Optional[str]` field
+2. Add explanation: "Object children use key to store property name; List children have key=None"
+
+
 
 **Priority:** P1 (Documentation fix)
 
