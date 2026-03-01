@@ -1,159 +1,170 @@
-# ZENO -- Validation Engine Specification
+# ZENO – Validation Engine Specification
 
-## 1. Purpose
+Status: Single-Phase Validation (No Generate, No Preview)
 
-This document defines the validation architecture of Zeno.
+---
 
-Zeno uses live validation to enforce correctness while preserving a
-clean separation between:
+## 1. Core Principle
 
--   Structural integrity
--   Configuration integrity
+**Validation blocks invalid state transitions.**
 
-Validation is deterministic and explicit.
+**IR must never contain invalid state.**
 
-------------------------------------------------------------------------
+All validation occurs **before** IR mutation. Invalid input is rejected at the buffer level without affecting IR.
+
+---
 
 ## 2. Validation Philosophy
 
-> Make it hard for the user to make a mistake.
+Validation is:
+- Deterministic and explicit
+- Not optional, not advisory
+- Enforced at field-level (per-keystroke)
+- Blocking for IR commit
+- Silent on success, visible on failure
 
-Validation is not optional. Validation is not cosmetic. Validation is
-not advisory.
+---
 
-Validation blocks invalid state transitions.
+## 3. Single-Phase Validation Lifecycle
 
-------------------------------------------------------------------------
-
-## 3. Single-Phase Validation Model
-
-Zeno validates all edits before committing to IR.
-
-There is no Generate phase. There is no separate second validation pass.
-
-All validation now occurs before IR mutation.
-
-IR must never contain invalid state.
-
-------------------------------------------------------------------------
-
-## 4. Live Validation
-
-Triggered by: Model tab → per-keystroke edit
-
-### 4.1 Purpose
-
-Ensure IR always contains only valid state.
-
-### 4.2 What Is Validated
-
--   Structural correctness
--   Required field presence
--   Field type correctness
--   Array `unique_by` constraints
--   Schema-defined restrictions
-
-### 4.3 What Is NOT Validated
-
--   (Future extension placeholder)
-
-### 4.4 Behavior on Failure
-
--   Input remains in buffer
--   IR is NOT updated
--   Inline floating hint displays error
--   Save is disabled
--   No popup dialogs
-
-------------------------------------------------------------------------
-
-## 5. Uniqueness Enforcement
-
-Schema may declare:
-
-``` yaml
-type: array
-unique_by: field_name
+```
+Edit in buffer → Validate field → Valid? → Yes: Update IR → No: Hold in buffer
 ```
 
-Rules:
+No Generate phase. No Preview validation gating. No transformation layer.
 
--   Applies only to arrays
--   Applies within array scope
--   Enforced before IR commit
--   Single-field uniqueness only
--   Duplicate values block commit
+All edits validated **immediately** before IR is touched.
 
-Example error:
+---
 
-    Duplicate value detected.
-    listeners[1].port = 502
-    Port is already used by listeners[0].
+## 4. Live Field Validation
 
-------------------------------------------------------------------------
+**Trigger:** User modifies scalar field value
+
+**Timing:** Per-keystroke
+
+**Process:**
+1. Input received into buffer
+2. Type checked
+3. Structural constraints checked
+4. Schema-defined rules checked
+5. Result: valid or invalid
+
+**On Valid:**
+- IR updated immediately
+- No error state
+
+**On Invalid:**
+- Input held in buffer
+- IR unchanged (remains valid)
+- Inline floating hint displayed
+- Save disabled
+
+---
+
+## 5. Validation Scope
+
+### 5.1 Always Validated
+
+- Field type correctness
+- Required field presence
+- Array `unique_by` constraints (within array scope)
+- Structural nesting correctness
+- Schema-defined restrictions
+
+### 5.2 Validation Rules
+
+**Type Checking:**
+- Scalar type matches schema
+- Array/object structure matches
+- Enum values match allowed set
+
+**Uniqueness (Arrays):**
+- `unique_by: field_name` enforced within array
+- Single-field uniqueness only
+- Duplicate values block commit
+
+**Required Fields:**
+- Non-nullable fields must be set
+- Missing values prevented at IR level
+
+---
 
 ## 6. Error Object Model
 
-Validators return structured errors.
+Validators produce structured error objects with:
 
-Minimum fields:
+```
+{
+  path: "listeners[1].port",
+  message: "Duplicate value 502. Already used by listeners[0].",
+  severity: "error"
+}
+```
 
-    path: listeners[1].port
-    message: Duplicate value 502
-    severity: error
+**Delivered to UI:**
+- Fields are highlighted
+- Tree nodes marked with error indicator
+- Inline floating hint shown
+- Status line updated
+- Save button disabled
 
-UI consumes these errors to:
+**Validation engine never manipulates UI directly.** UI consumes error objects and renders them.
 
--   Highlight tree nodes
--   Highlight model lines
--   Show inline floating hint
--   Update status line
--   Disable Save
+---
 
-Validation engine must never manipulate UI directly.
+## 7. Mutation Boundary Guarantee
 
-------------------------------------------------------------------------
-
-## 7. Strict Mode
-
-Schema grammar is strict.
-
--   Unknown schema keywords → validation error
--   Invalid node types → error
--   Invalid nesting → error
-
-Strict grammar reduces ambiguity and mistake surface.
-
-------------------------------------------------------------------------
-
-## 8. Mutation Boundary
-
-All validation occurs before IR mutation.
+```
+Input validation → Pass? → IR updated
+              → Fail? → Buffer holds invalid state, IR untouched
+```
 
 This ensures:
+- IR always contains only valid state
+- Workflow remains deterministic
+- No partial or inconsistent IR states
+- Save always reflects actual valid state
 
--   Internal state remains consistent
--   User workflow remains deterministic
--   IR is always valid
+---
 
-------------------------------------------------------------------------
+## 8. Strict Schema Grammar
 
-## 9. Design Evolution Notes
+Schema validation rejects:
+- Unknown schema keywords
+- Invalid field types
+- Invalid nesting patterns
+- Unresolvable type references
 
-Initial design:
-- Structural validation only
+Strict grammar reduces ambiguity and surface area for user mistakes.
 
-Evolved design (v2):
-- Strict schema grammar
-- Array-local `unique_by`
-- Two-phase validation model (Write/Generate)
-- Explicit mutation vs projection boundary
+---
 
-Current design (v3):
-- Single-phase live validation
-- Valid-only IR guarantee
-- Removed Generate phase
-- Save gating on validation errors
+## 9. Save Gating
 
+Save is disabled when:
+- Any buffer contains invalid input
+- Any validation error is present
+- Any structural inconsistency is detected
 
-Validation engine is central to Zeno's safety model.
+Save is enabled only when:
+- All fields are valid
+- All buffers are empty or valid
+- IR is complete and correct
+
+Save action serializes IR directly to disk via adapter. No pre-save transformation.
+
+---
+
+## 10. No Generate-Phase Validation
+
+There is no separate "Generate" step with its own validation gate.
+
+All validation is live. All validation blocks IR mutation.
+
+Validation engine is single-phase.
+
+---
+
+Generated: 2026-03-01
+End of Document.

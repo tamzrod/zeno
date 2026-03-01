@@ -1,193 +1,235 @@
-# ZENO -- Error Model Specification
+# ZENO – Error Model Specification
+
+Status: Single-Phase Validation
+
+---
 
 ## 1. Purpose
 
-This document defines how errors are represented, propagated, and
-displayed in Zeno.
+This document defines how errors are represented, categorized, propagated, and displayed in ZENO.
 
 Errors must be:
-
--   Deterministic
--   Structured
--   Machine-readable
--   UI-agnostic
+- Deterministic
+- Structured
+- Machine-readable
+- UI-agnostic
 
 The validation engine produces errors. The UI consumes errors.
 
-Separation of concerns is mandatory.
+---
 
-------------------------------------------------------------------------
+## 2. Single Validation Phase
 
-## 2. Core Principles
+All validation occurs before IR mutation.
 
-1.  Validators never manipulate UI.
-2.  Errors are data, not side effects.
-3.  Errors must include precise location information.
-4.  No popup dialogs for validation errors.
-5.  Errors persist until corrected.
+IR must never contain invalid state.
 
-------------------------------------------------------------------------
+ZENO has one validation phase only:
 
-## 3. Error Object Structure
+```text
+Live field edit -> Validate -> Valid: commit to IR / Invalid: hold in buffer
+```
 
-All validation errors must conform to a structured format.
+There is no Generate phase.
+There is no Preview phase.
+There is no Write vs Generate lifecycle distinction.
+
+---
+
+## 3. Core Rules
+
+1. Validators never manipulate UI.
+2. Errors are data, not side effects.
+3. Errors include precise node location.
+4. Validation errors persist until corrected.
+5. Invalid input never mutates IR.
+6. Save is blocked when any validation error exists.
+
+---
+
+## 4. Error Object Structure
+
+All errors use a structured format.
 
 Minimum required fields:
 
-    path: string
-    message: string
-    phase: "write" | "generate"
-    severity: "error"
+```json
+{
+  "path": "listeners[1].port",
+  "message": "Duplicate value 502. Port already used by listeners[0].",
+  "category": "field_validation",
+  "severity": "error"
+}
+```
 
-Optional fields (future-safe):
+Field contract:
+- `path` (string): Node path in IR
+- `message` (string): Human-readable description
+- `category` (string): Error category
+- `severity` (string): `error` (blocking), `warning` (optional/future)
 
-    code: string
-    details: string
-    context: object
+Optional fields:
+- `code` (string)
+- `details` (string)
+- `context` (object)
 
-------------------------------------------------------------------------
+---
 
-## 4. Path Representation
+## 5. Error Categories
 
-Paths must uniquely identify a node inside IR.
+Allowed category structure:
 
-Example:
+1. Structural validation errors
+2. Schema rule violations
+3. Field-level validation errors
+4. Persistence errors (optional)
 
-    listeners[1].port
-    memory[0].policy.rules[2].allow_fc
+No category is phase-based.
+
+### 5.1 Structural Validation Errors
+
+Definition:
+Errors where edited content violates schema-defined structure.
+
+Examples:
+- Missing required field
+- Invalid nesting shape
+- Invalid object/array structure
+
+Category value:
+`structural`
+
+### 5.2 Schema Rule Violations
+
+Definition:
+Errors where a value violates schema constraints.
+
+Examples:
+- Type mismatch
+- Enum mismatch
+- Range constraint failure
+- Pattern constraint failure
+
+Category value:
+`schema_rule`
+
+### 5.3 Field-Level Validation Errors
+
+Definition:
+Errors detected during per-keystroke field validation.
+
+Examples:
+- Required value currently empty
+- Invalid field format
+- Field-level uniqueness conflict
+
+Category value:
+`field_validation`
+
+### 5.4 Persistence Errors (Optional)
+
+Definition:
+Errors during file write operations after validation has passed.
+
+Examples:
+- Permission denied
+- Path unavailable
+- Disk write failure
+
+Category value:
+`persistence`
+
+Persistence errors are not Generate-related and do not introduce a new validation phase.
+
+---
+
+## 6. Error Timing
+
+Errors occur during live field validation.
+
+Timing sequence:
+1. User edits field.
+2. Validation executes immediately.
+3. If invalid, error object is emitted and IR is unchanged.
+4. If valid, IR updates for that field.
+
+Save behavior:
+- Save is blocked if any validation error exists.
+- Save checks existing error state; it does not create a second validation phase.
+- There is no separate post-validation export error stage.
+
+---
+
+## 7. Explicit Exclusions
+
+There is no Generate-phase error category.
+There is no Preview-phase error category.
+
+There is no two-phase error model.
+
+---
+
+## 8. Path Representation
+
+Paths uniquely identify one node in IR.
+
+Examples:
+`listeners[1].port`
+`memory[0].policy.rules[2].allow_fc`
 
 Rules:
+- Array indices are explicit.
+- Nested properties use dot notation.
+- Path must resolve to exactly one node.
 
--   Array indices must be explicit.
--   Nested properties separated by dot (`.`).
--   Path must always resolve to a single node.
+---
 
-Paths are consumed by UI to highlight exact node.
+## 9. Propagation Model
 
-------------------------------------------------------------------------
+Flow:
 
-## 5. Error Phases
+```text
+Validator -> Error objects -> UI renderer -> Highlights + status + save gating
+```
 
-### 5.1 Write Phase Errors
+The validator never directly controls UI widgets.
 
-Triggered during: Modify → Write
+---
 
-Examples:
-
--   Structural violation
--   Missing required field
--   Invalid type
--   Duplicate value (`unique_by` violation)
-
-Behavior:
-
--   Write blocked
--   IR unchanged
--   Node highlighted
--   Status updated
-
-------------------------------------------------------------------------
-
-### 5.2 Generate Phase Errors
-
-Triggered during: Preview → Generate
-
-Examples:
-
--   Cross-field violation
--   Runtime constraint failure
--   Export transformation error
-
-Behavior:
-
--   Preview unchanged
--   Node highlighted
--   Status updated
-
-------------------------------------------------------------------------
-
-## 6. Uniqueness Error Example
-
-If duplicate port detected:
-
-    path: listeners[1].port
-    message: Duplicate value 502. Port already used by listeners[0].
-    phase: write
-    severity: error
-
-------------------------------------------------------------------------
-
-## 7. Error Propagation Flow
-
-    Validator
-       ↓
-    Error Objects (list)
-       ↓
-    UI Layer
-       ↓
-    Tree Highlight
-    Field Highlight
-    Status Line Update
-
-No direct coupling between validator and UI.
-
-------------------------------------------------------------------------
-
-## 8. Status Line Behavior
-
-Status line displays summary message.
-
-Examples:
-
-✔ Write successful\
-❌ Duplicate port 502\
-❌ 3 validation errors detected
-
-Rules:
-
--   Single-line only
--   No scrolling log
--   Persistent until next state change (including next successful operation)
-
-------------------------------------------------------------------------
-
-## 9. Multiple Errors Handling
+## 10. Multiple Error Handling
 
 If multiple errors exist:
+- All errors are retained.
+- All impacted nodes are highlighted.
+- Save remains disabled until all blocking validation errors are resolved.
 
--   All errors stored internally
--   First error summarized in status line
--   All affected nodes highlighted
--   Optional future: expandable error panel
+---
 
-System must never stop at first error silently.
+## 11. Severity
 
-------------------------------------------------------------------------
+Current blocking level:
+- `error`
 
-## 10. Severity Levels
+Optional future advisory level:
+- `warning`
 
-Currently supported:
+Warnings do not mutate IR and do not redefine lifecycle behavior.
 
--   error (blocking)
+---
 
-Future possibility:
+## 12. Deterministic Guarantee
 
--   warning (non-blocking)
+The error model preserves deterministic behavior:
+- Same invalid input produces the same error category and location.
+- No hidden phase transitions.
+- No hidden transformation layers.
+- No invalid IR state.
 
-Warnings must never silently auto-correct state.
+This supports the core philosophy:
 
-------------------------------------------------------------------------
+Make it hard for the user to commit a mistake.
 
-## 11. Design Evolution Notes
+---
 
-Initial concept: - Simple exception-based error handling
-
-Evolved design: - Structured error objects - Phase-aware validation -
-UI-agnostic error propagation - No popup dialogs - Highlight-based
-visualization
-
-The error model enforces deterministic and visible failure handling.
-
-It supports the core philosophy:
-
-Make it hard for the user to make a mistake.
+Generated: 2026-03-01
+End of Document.
