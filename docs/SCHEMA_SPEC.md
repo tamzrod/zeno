@@ -1,14 +1,27 @@
 # ZENO -- Schema Specification
 
+Version: 2.1\
+Status: UPDATED (Implements required / min_items / max_items)
+
+------------------------------------------------------------------------
+
 ## 1. Purpose
 
-This document defines the schema language used by Zeno (`.zs` files).
+This document defines the schema language used by ZENO (`.zs` files).
 
-The schema describes: - Allowed structure - Allowed nesting - Array
-uniqueness constraints - Intent documentation
+The schema describes:
 
-The schema does NOT: - Perform runtime export - Execute logic -
-Implicitly fix errors
+-   Allowed structure
+-   Allowed nesting
+-   Array uniqueness constraints
+-   Structural cardinality constraints
+-   Intent documentation
+
+The schema does NOT:
+
+-   Perform runtime export
+-   Execute logic
+-   Implicitly fix errors
 
 Its purpose is structural authority.
 
@@ -16,9 +29,10 @@ Its purpose is structural authority.
 
 ## 2. Schema File Format
 
--   Extension: `.zs`
--   Transport: YAML
--   Root must contain:
+Extension: `.zs`\
+Transport: YAML
+
+Root must contain:
 
 ``` yaml
 zeno_schema: <version>
@@ -29,8 +43,12 @@ root:
   properties: ...
 ```
 
-Required top-level keys: - `zeno_schema` - `application` - `format` -
-`root`
+Required top-level keys:
+
+-   `zeno_schema`
+-   `application`
+-   `format`
+-   `root`
 
 ------------------------------------------------------------------------
 
@@ -62,11 +80,20 @@ type: object
 properties:
   key_name:
     type: ...
+    required: true | false
 ```
 
-Rules: - `properties` must be a mapping. - Each property value must
-itself be a schema node. - Only defined properties are allowed. -
-Unknown keys in config are rejected.
+Rules:
+
+-   `properties` must be a mapping.
+-   Each property must itself be a schema node.
+-   Only defined properties are allowed.
+-   Unknown keys in config are rejected.
+-   `required` (optional):
+    -   Default: false
+    -   If true → property must exist.
+    -   UI must disable removal of required properties.
+    -   Write-phase validation blocks missing required properties.
 
 ------------------------------------------------------------------------
 
@@ -74,44 +101,24 @@ Unknown keys in config are rejected.
 
 ``` yaml
 type: array
+min_items: <integer>
+max_items: <integer>
+unique_by: <field_name>
 items:
   type: ...
 ```
 
-Rules: - `items` is required. - `items` must be a schema node. - Array
-structure is validated per item.
-
-------------------------------------------------------------------------
-
-## 6. Primitive Nodes
-
-Primitive types: - string - integer - number - boolean
-
-Rules: - Cannot define `properties` - Cannot define `items`
-
-------------------------------------------------------------------------
-
-## 7. Uniqueness Constraint (`unique_by`)
-
-Zeno supports controlled uniqueness enforcement on arrays.
-
-``` yaml
-type: array
-unique_by: field_name
-items:
-  type: object
-  properties:
-    field_name:
-      type: integer
-```
-
 Rules:
 
--   `unique_by` allowed only on `type: array`
--   Value must be a single field name (string)
--   Field must exist in `items.properties`
+-   `items` is required.
+-   `min_items` (optional):
+    -   Default: 0
+    -   Removal disabled if current_count == min_items
+-   `max_items` (optional):
+    -   If defined → Add disabled when current_count == max_items
+-   `unique_by` allowed only on arrays
+-   `unique_by` enforced during Write phase
 -   Uniqueness applies only within that array scope
--   Enforced during Write phase validation
 
 Example:
 
@@ -119,60 +126,108 @@ Example:
 listeners:
   type: array
   unique_by: port
+  min_items: 1
 ```
 
-This prevents duplicate `port` values inside `listeners`.
+------------------------------------------------------------------------
 
-Composite uniqueness is NOT supported at this stage.
+## 6. Primitive Nodes
+
+Primitive types:
+
+-   string
+-   integer
+-   number
+-   boolean
+
+Rules:
+
+-   Cannot define `properties`
+-   Cannot define `items`
+-   Cannot define `min_items` or `max_items`
 
 ------------------------------------------------------------------------
 
-## 8. Strict Grammar
+## 7. Structural Cardinality Enforcement
 
-Schema is strict.
+### Object Properties
 
--   Unknown schema keywords → error
--   Undefined node types → error
--   Invalid nesting → error
+If `required: true`: - Property must exist. - UI removal must be
+disabled. - Write-phase validation blocks deletion.
 
-Schema must be deterministic and explicit.
+If `required: false` or omitted: - Property may be removed. - Absence is
+valid.
+
+### Arrays
+
+If `min_items` defined: - Removal disabled when item_count == min_items.
+
+If `max_items` defined: - Add disabled when item_count == max_items.
+
+If neither defined: - Array unconstrained structurally.
 
 ------------------------------------------------------------------------
 
-## 9. Behavioral Documentation via Comments
+## 8. Tree Behavior Contract (Structural Layer)
 
-Export mappings and semantic notes must be documented in comments only.
+Tree operations must derive strictly from schema:
 
-Example:
+OBJECT: - Add → Only missing schema-defined properties. - Remove →
+Disabled if `required: true`. - No duplicate keys.
+
+ARRAY: - Add → Disabled if `max_items` reached. - Remove → Disabled if
+`min_items` boundary reached. - Reorder allowed unless domain rule
+prevents.
+
+SCALAR: - Edit value only. - No structural mutation.
+
+------------------------------------------------------------------------
+
+## 9. MMA Example (Applied)
+
+### Required Memory Per Port
 
 ``` yaml
-port:
-  type: integer
-  # Exported as listen: ":<port>"
+memory:
+  type: array
+  min_items: 1
 ```
 
-Machine-readable schema must not imply behavior that engine does not
-enforce.
+Prevents port without memory blocks.
+
+### Optional State Sealing
+
+``` yaml
+state_sealing:
+  type: object
+  required: false
+```
+
+If absent → state sealing disabled.
 
 ------------------------------------------------------------------------
 
-## 10. Domain-Specific Notes (MMA Example)
+## 10. Strict Grammar
 
--   `state_sealing`:
-    -   Absence of declaration means state sealing is disabled.
--   `unique_by` is used for:
-    -   listeners.port
-    -   memory.unit_id (per listener)
+Unknown schema keywords → error.\
+Invalid nesting → error.\
+Invalid cardinality definitions → error.
+
+Schema remains deterministic and explicit.
 
 ------------------------------------------------------------------------
 
-## 11. Design Evolution Notes
+## 11. Alignment Statement
 
-Initial design: - Structural validation only - Permissive unknown
-keywords
+This update aligns with:
 
-Evolved design: - Strict schema grammar - `unique_by` enforcement -
-Array-local uniqueness - Explicit separation of structural and semantic
-validation
+-   Architecture Lock
+-   Operation Model v2.1
+-   UI Architecture v2.4
+-   Validation Engine Specification
 
-Schema remains declarative and authoritative.
+ZENO remains schema-driven and document-centric.
+
+------------------------------------------------------------------------
+
+Generated on: 2026-02-28T08:52:38.073901 UTC

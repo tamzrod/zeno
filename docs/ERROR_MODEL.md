@@ -147,7 +147,7 @@ Rules:
 
 -   Single-line only
 -   No scrolling log
--   Cleared on next successful operation
+-   Persistent until next state change (including next successful operation)
 
 ------------------------------------------------------------------------
 

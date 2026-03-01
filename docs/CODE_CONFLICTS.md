@@ -1,6 +1,6 @@
 # CODE vs. DOCUMENTATION CONFLICTS
 
-**Status:** ✅ ALL RESOLVED (7 of 7 COMPLETE)  
+**Status:** ✅ ALL RESOLVED (12 of 12 COMPLETE)  
 **Last Updated:** 2026-02-28  
 **Source of Truth:** Documentation (LOCKED)
 
@@ -182,44 +182,106 @@ This document tracks conflicts and resolutions between codebase and documentatio
 
 ---
 
+## ✅ RESOLVED: CONFLICT 8 (README Manual Modes Drift)
+
+**Resolution Date:** 2026-02-28  
+**Status:** CLOSED
+
+**Changes Applied:**
+1. Updated `README.md`:
+   - ✗ Removed "Operating Modes" section (Schema Mode / Config Mode)
+   - ✓ Replaced with "Document-Centric Operation"
+   - ✓ Clarified that behavior is determined by Active Schema + Active Document
+
+**Result:**
+- ✓ README now aligns with document-centric architecture
+- ✓ No manual mode language remains
+
+---
+
+## ✅ RESOLVED: CONFLICT 9 (Title Bar Version Injection vs Architecture Lock)
+
+**Resolution Date:** 2026-02-28  
+**Status:** CLOSED
+
+**Changes Applied:**
+1. Updated `docs/ADDENDUM_v2.0.md`:
+   - ✗ Removed title formats that injected version into window title
+   - ✓ Aligned title format to `ZENO -- <Application>` and `ZENO -- <Application> -- <DocumentName>`
+   - ✓ Kept `version` as schema metadata (non-title-driving)
+
+**Result:**
+- ✓ Addendum now matches Architecture Lock title contract
+- ✓ No contradictory title behavior across docs
+
+---
+
+## ✅ RESOLVED: CONFLICT 10 (Help Menu Contract Mismatch)
+
+**Resolution Date:** 2026-02-28  
+**Status:** CLOSED
+
+**Changes Applied:**
+1. Updated `docs/UI_BEHAVIOR_v2.4.md` Help Menu:
+   - ✗ Removed mandatory "Validation Rules" item
+   - ✓ Set menu to About + Documentation
+   - ✓ Clarified documentation links are optional and local
+
+**Result:**
+- ✓ UI behavior doc now matches UI Architecture v2.4
+
+---
+
+## ✅ RESOLVED: CONFLICT 11 (Validation Trigger Uses Deprecated "Modify Tab")
+
+**Resolution Date:** 2026-02-28  
+**Status:** CLOSED
+
+**Changes Applied:**
+1. Updated `docs/VALIDATION_ENGINE.md`:
+   - ✗ "Triggered by: Modify Tab → Write button"
+   - ✓ "Triggered by: Default Workspace (Editor) → Write button"
+
+**Result:**
+- ✓ Validation lifecycle terminology now matches current UI contract
+
+---
+
+## ✅ RESOLVED: CONFLICT 12 (Status Line Persistence Wording Drift)
+
+**Resolution Date:** 2026-02-28  
+**Status:** CLOSED
+
+**Changes Applied:**
+1. Updated `docs/ERROR_MODEL.md` status line rules:
+   - ✗ "Cleared on next successful operation"
+   - ✓ "Persistent until next state change (including next successful operation)"
+
+**Result:**
+- ✓ Error model now aligns with UI behavior status-line contract
+
+---
+
 ## ALIGNED AREAS (No Conflicts)
 
 The following areas are correctly implemented per documentation:
 
-✓ **Right Panel Tab Names**: Model / Docs / Preview  
+✓ **Right Panel Tab Names**: Docs / Preview (+ default editor workspace)  
 ✓ **Export Button Placement**: In Preview tab  
-✓ **Schema Expansion Logic**: Matches CONFIG_EDITING_BEHAVIOR_v2.0.md  
+✓ **Schema Expansion Logic**: Matches CONFIG_EDITING_BEHAVIOR_v2.1.md  
 ✓ **Dirty State Gating**: Generate/Export disabled when Dirty  
 ✓ **File Menu Structure**: Correct items (though functionality incomplete)  
 ✓ **OperationProcessor Pattern**: All mutations go through processor
 
 ---
 
-## RESOLUTION PRIORITY
+## CURRENT STATE
 
-### Phase 1 (P0 — Blocking)
-1. Resolve Dual IR Models (Conflict 1)
-2. Fix Adapter Contract (Conflict 3)
-3. Fix Validator Type (Conflict 4)
-4. Implement Parse Function (Conflict 7)
+All identified code/documentation and documentation/documentation
+conflicts are resolved as of 2026-02-28.
 
-### Phase 2 (P1 — Documentation)
-5. Document `key` field (Conflict 2)
-
-### Phase 3 (P2 — Architecture Cleanup)
-6. Remove mode flag (Conflict 5)
-
-### Phase 4 (P3 — UX Polish)
-7. Clarify Generate Node button (Conflict 6)
-
----
-
-**Next Steps:**
-1. Fix Conflict 1 first (dual IR models)
-2. All other conflicts depend on resolving the IR split
-3. Work through priority order
-4. Validate each fix against documentation
-5. Update this document as conflicts are resolved
+Next action is maintenance-only: keep new spec edits synchronized with
+Architecture Lock and UI Architecture lock files.
 
 ---
 

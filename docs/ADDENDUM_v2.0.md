@@ -43,7 +43,10 @@ Examples: - MMA - Grafana - Telegraf - NGINX
 
 ### version (optional)
 
-Displayed in title bar if present.
+Schema metadata for identity/version tracking.
+
+May be used by documentation surfaces, but title bar behavior remains
+governed by Architecture Lock.
 
 ### icon (optional)
 
@@ -59,13 +62,9 @@ Primary format:
 
     ZENO -- <Application>
 
-If version is present:
-
-    ZENO -- <Application> <Version>
-
 If a document is open:
 
-    ZENO -- <Application> <Version> -- <DocumentName>
+    ZENO -- <Application> -- <DocumentName>
 
 If no schema loaded:
 

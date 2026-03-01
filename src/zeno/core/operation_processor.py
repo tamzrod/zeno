@@ -21,6 +21,8 @@ class OperationProcessor:
             self._apply_update_scalar(operation)
         elif operation.operation_type == "remove_node":
             self._apply_remove_node(operation)
+        elif operation.operation_type == "move_node":
+            self._apply_move_node(operation)
         else:
             raise NotImplementedError(
                 f"Unsupported operation type: {operation.operation_type}"
@@ -78,3 +80,43 @@ class OperationProcessor:
 
         # Then delete subtree
         self._store.delete_subtree(node_id=node_id)
+
+    def _apply_move_node(self, operation: Operation) -> None:
+        """Move a node within its parent's children list (for LIST reordering)."""
+        payload = operation.payload
+
+        node_id: UUID = payload["node_id"]
+        direction: str = payload["direction"]  # "up" or "down"
+
+        if not self._store.has_node(node_id):
+            raise ValueError("Target node does not exist.")
+
+        node = self._store.get_node(node_id)
+
+        if node.parent_id is None:
+            raise ValueError("Cannot move root node.")
+
+        parent = self._store.get_node(node.parent_id)
+
+        if parent.type != NodeType.LIST:
+            raise ValueError("Move operation only allowed for LIST children.")
+
+        try:
+            current_index = parent.children.index(node_id)
+        except ValueError:
+            raise RuntimeError("Structural corruption: node not in parent's children.")
+
+        if direction == "up":
+            if current_index == 0:
+                raise ValueError("Cannot move first item up.")
+            new_index = current_index - 1
+        elif direction == "down":
+            if current_index == len(parent.children) - 1:
+                raise ValueError("Cannot move last item down.")
+            new_index = current_index + 1
+        else:
+            raise ValueError(f"Invalid direction: {direction}")
+
+        # Remove from current position and insert at new position
+        parent.children.pop(current_index)
+        parent.children.insert(new_index, node_id)

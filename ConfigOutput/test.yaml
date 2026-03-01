@@ -1,0 +1,19 @@
+listeners:
+- id: '5'
+  port: '500'
+  memory: []
+state_sealing:
+  area: null
+  start: null
+  count: null
+notify:
+  holding_registers: []
+  input_registers: []
+  coils: []
+  discrete_inputs: []
+  influx:
+    url: null
+    token: null
+    org: null
+    bucket: null
+    measurement: null

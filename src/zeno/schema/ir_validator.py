@@ -79,7 +79,7 @@ class IRStoreView(IRNodeView):
 # Error Types
 # ============================================================
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class ValidationIssue:
     path: str
     message: str

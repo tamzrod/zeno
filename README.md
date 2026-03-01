@@ -58,17 +58,14 @@ engine.
 
 ------------------------------------------------------------------------
 
-## Operating Modes
+## Document-Centric Operation
 
-Zeno operates in two modes:
+Zeno does not use manual modes.
 
-### Schema Mode
+UI behavior is determined by:
 
-Edit `.zs` schema definitions.
-
-### Config Mode
-
-Edit configuration constrained by a loaded schema.
+-   Active Schema
+-   Active Document (optional)
 
 A configuration cannot exist without a schema.
 

@@ -1,8 +1,6 @@
 ﻿from __future__ import annotations
 
 import sys
-from pathlib import Path
-from uuid import UUID
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
@@ -14,40 +12,99 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 
-from zeno.schema.loader import load
-from zeno.core.store import IRStore
-from zeno.core.types import NodeType
-from zeno.core.operation import Operation
-from zeno.core.operation_processor import OperationProcessor
-
 from zeno.ui.tree_panel import TreePanel
 from zeno.ui.right_panel import RightPanel
+from zeno.ui.schema_manager import SchemaManager
+from zeno.ui.ir_builder import IRBuilder
+from zeno.ui.tree_renderer import TreeRenderer
+from zeno.ui.document_manager import DocumentManager
+from zeno.ui.node_add_operations import NodeAddOperations
+from zeno.ui.node_edit_operations import NodeEditOperations
 
 
 class ZenoMainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
 
-        self.setWindowTitle("Zeno Rebuild Phase")
         self.setMinimumSize(1100, 700)
 
-        self._schema = None
-        self._store: IRStore | None = None
-        self._processor: OperationProcessor | None = None
-        self._root_id: UUID | None = None
+        # UI Components
+        self.tree_panel = TreePanel()
+        self.right_panel = RightPanel()
+
+        # Validation and edit state
+        self._has_invalid_buffers = False
+        self._has_validation_errors = False
+
+        # Schema & IR utilities
+        self.schema_manager = SchemaManager()
+        self.ir_builder = IRBuilder(None, None)  # Will be updated on document creation
+        self.tree_renderer = TreeRenderer(None, self.tree_panel, self.right_panel, self._get_schema)
+
+        # Document lifecycle manager
+        self.document_manager = DocumentManager(
+            self.tree_panel,
+            self.right_panel,
+            self.ir_builder,
+            self.tree_renderer,
+            self,
+        )
+        self.document_manager.set_title_callback(self._update_title)
+        self.document_manager.set_menu_state_callback(self._update_menu_state)
+        self.document_manager.set_status_callback(self._update_status)
+
+        # Node operation handlers
+        self.node_add_operations = NodeAddOperations(
+            None,  # store (will be set on document creation)
+            None,  # processor (will be set on document creation)
+            self.schema_manager,
+            self.ir_builder,
+            self.tree_renderer,
+            self,
+        )
+        self.node_add_operations.set_dirty_callback(self._set_document_dirty)
+        self.node_add_operations.set_status_callback(self._update_status)
+
+        self.node_edit_operations = NodeEditOperations(
+            None,  # store (will be set on document creation)
+            None,  # processor (will be set on document creation)
+            self.schema_manager,
+            self.tree_renderer,
+            self,
+        )
+        self.node_edit_operations.set_dirty_callback(self._set_document_dirty)
+        self.node_edit_operations.set_status_callback(self._update_status)
 
         self._build_actions()
         self._build_menus()
         self._build_ui()
         self._wire()
 
-        self._load_schema_file("schema/mma_nested_model.zs")
+        # Start with no schema loaded
+        self._update_title()
+        self._update_menu_state()
+        self._update_status("Ready.")
 
     # ---------------- Menu ----------------
 
     def _build_actions(self) -> None:
-        self.act_new_config = QAction("New Config", self)
+        self.act_new_config = QAction("New Config...", self)
         self.act_new_config.triggered.connect(self._on_new_config)
+
+        self.act_open_config = QAction("Open Config...", self)
+        self.act_open_config.triggered.connect(self._on_open_config)
+
+        self.act_save = QAction("Save", self)
+        self.act_save.triggered.connect(self._on_save)
+
+        self.act_save_as = QAction("Save As...", self)
+        self.act_save_as.triggered.connect(self._on_save_as)
+
+        self.act_config_wizard = QAction("Config Wizard...", self)
+        self.act_config_wizard.triggered.connect(self._on_config_wizard)
+
+        self.act_load_schema = QAction("Load Schema...", self)
+        self.act_load_schema.triggered.connect(self._on_load_schema)
 
         self.act_exit = QAction("Exit", self)
         self.act_exit.triggered.connect(self.close)
@@ -60,6 +117,12 @@ class ZenoMainWindow(QMainWindow):
 
         m_file = mb.addMenu("File")
         m_file.addAction(self.act_new_config)
+        m_file.addAction(self.act_open_config)
+        m_file.addAction(self.act_save)
+        m_file.addAction(self.act_save_as)
+        m_file.addSeparator()
+        m_file.addAction(self.act_config_wizard)
+        m_file.addAction(self.act_load_schema)
         m_file.addSeparator()
         m_file.addAction(self.act_exit)
 
@@ -74,9 +137,6 @@ class ZenoMainWindow(QMainWindow):
         splitter = QSplitter(Qt.Horizontal)
         self.setCentralWidget(splitter)
 
-        self.tree_panel = TreePanel()
-        self.right_panel = RightPanel()
-
         splitter.addWidget(self.tree_panel)
         splitter.addWidget(self.right_panel)
 
@@ -90,219 +150,225 @@ class ZenoMainWindow(QMainWindow):
 
     def _wire(self) -> None:
         self.tree_panel.node_selected.connect(self._on_node_selected)
+        self.tree_panel.add_node_requested.connect(self._on_add_node_requested)
+        self.tree_panel.remove_node_requested.connect(self._on_remove_node_requested)
+        self.tree_panel.move_node_requested.connect(self._on_move_node_requested)
+        self.tree_panel.edit_value_requested.connect(self._on_edit_value_requested)
+        self.tree_panel.new_config_requested.connect(self._on_new_config)
+
+        # Right panel: live scalar edits and validation
+        self.right_panel.scalar_value_edited.connect(self._on_scalar_value_edited)
+        self.right_panel.invalid_buffers_changed.connect(self._on_invalid_buffers_changed)
+
+    # ---------------- State Management ----------------
+
+    def _get_schema(self):
+        """Get current schema for tree rendering."""
+        return self.document_manager.get_schema()
+
+    def _update_status(self, message: str) -> None:
+        """Update status bar message."""
+        self.statusBar().showMessage(message)
+
+    def _set_document_dirty(self, dirty: bool = True) -> None:
+        """Mark document as dirty via document manager."""
+        self.document_manager.set_dirty(dirty)
+
+    def _sync_operation_context(self) -> None:
+        """Sync schema/store/processor references used by node operation handlers."""
+        schema = self.document_manager.get_schema()
+        store = self.document_manager.get_store()
+        processor = self.document_manager.get_processor()
+        root_id = self.document_manager.get_root_id()
+
+        self.schema_manager.set_schema(schema)
+
+        self.node_add_operations._store = store
+        self.node_add_operations._processor = processor
+
+        self.node_edit_operations._store = store
+        self.node_edit_operations._processor = processor
+        self.node_edit_operations.set_root_id(root_id)
+
+    def _update_title(self) -> None:
+        """Update window title based on document state."""
+        schema = self.document_manager.get_schema()
+        store = self.document_manager.get_store()
+        doc_path = self.document_manager.get_document_path()
+        is_dirty = self.document_manager.is_dirty()
+
+        if not schema:
+            self.setWindowTitle("ZENO -- No Schema")
+        elif doc_path:
+            doc_name = doc_path.name
+            dirty_marker = "*" if is_dirty else ""
+            self.setWindowTitle(f"ZENO -- {doc_name}{dirty_marker}")
+        elif store:
+            dirty_marker = "*" if is_dirty else ""
+            self.setWindowTitle(f"ZENO -- Untitled{dirty_marker}")
+        else:
+            self.setWindowTitle("ZENO -- Schema Loaded")
+
+    def _update_menu_state(self) -> None:
+        """Enable/disable menu items based on document and validation state."""
+        has_schema = self.document_manager.get_schema() is not None
+        has_document = self.document_manager.get_store() is not None
+
+        # New Config, Config Wizard require schema
+        self.act_new_config.setEnabled(has_schema)
+        self.act_open_config.setEnabled(has_schema)
+        self.act_config_wizard.setEnabled(has_schema)
+
+        # Save/Save As require active document AND no invalid buffers AND no validation errors
+        can_save = has_document and not self._has_invalid_buffers and not self._has_validation_errors
+        self.act_save.setEnabled(can_save)
+        self.act_save_as.setEnabled(can_save)
 
     # ---------------- Schema Load ----------------
 
-    def _load_schema_file(self, path: str) -> None:
-        schema_path = Path(path)
+    def _on_load_schema(self) -> None:
+        """Handle Load Schema menu action."""
+        self.document_manager.handle_load_schema()
+        self._sync_operation_context()
 
-        if not schema_path.exists():
-            QMessageBox.critical(self, "Error", f"Schema not found: {path}")
-            return
-
-        self._schema = load(schema_path)
-
-        root_mapping = self._schema.root
-        properties = root_mapping.get("properties", {})
-
-        tree_data = {
-            "Schema Root": [
-                {"type": "section", "key": key, "label": key}
-                for key in properties.keys()
-            ]
-        }
-
-        self.tree_panel.set_tree(tree_data)
-        self.statusBar().showMessage(f"Loaded schema: {schema_path.name}")
-
-    # ---------------- New Config ----------------
+    # ---------------- Document Lifecycle ----------------
 
     def _on_new_config(self) -> None:
-        if not self._schema:
-            QMessageBox.warning(self, "Warning", "No schema loaded.")
-            return
+        """Handle New Config menu action."""
+        self.document_manager.handle_new_config()
+        self._sync_operation_context()
 
-        self._store = IRStore()
-        self._processor = OperationProcessor(self._store)
-        self._root_id = self._store.create_root(NodeType.OBJECT)
+    def _on_open_config(self) -> None:
+        """Handle Open Config menu action."""
+        self.document_manager.handle_open_config()
+        self._sync_operation_context()
 
-        # Build full IR tree from schema root
-        self._expand_schema_into_ir(parent_id=self._root_id, schema_node=self._schema.root)
+    def _on_save(self) -> None:
+        """Handle Save menu action."""
+        self.document_manager.handle_save()
 
-        # Render top-level IR nodes in tree
-        self._render_ir_tree_top_level()
+    def _on_save_as(self) -> None:
+        """Handle Save As menu action."""
+        self.document_manager.handle_save_as()
 
-        # Show a dump of full IR for proof
-        dump = self._dump_ir(self._root_id)
-        self.right_panel.set_full_preview_text(dump)
-
-        self.statusBar().showMessage("New config created (schema-expanded).")
-
-    def _expand_schema_into_ir(self, *, parent_id: UUID, schema_node: dict) -> None:
-        """
-        Deterministic schema → IR expansion.
-
-        Rules:
-        - object: create children for each property
-        - array: create LIST node but DO NOT create items (empty list)
-        - scalar (string/integer/bool/...): create SCALAR node with value=None
-        """
-        if not self._processor or not self._store:
-            return
-
-        node_type = schema_node.get("type")
-
-        # Only objects have 'properties' in our schema
-        if node_type != "object":
-            return
-
-        props = schema_node.get("properties", {})
-        if not isinstance(props, dict):
-            return
-
-        for prop_key, prop_schema in props.items():
-            if not isinstance(prop_schema, dict):
-                continue
-
-            t = prop_schema.get("type")
-
-            if t == "object":
-                child_type = NodeType.OBJECT
-            elif t == "array":
-                child_type = NodeType.LIST
-            else:
-                # string/integer/bool/unknown => scalar node
-                child_type = NodeType.SCALAR
-
-            op = Operation.create(
-                operation_type="add_node",
-                target_node_id=None,
-                payload={
-                    "parent_id": parent_id,
-                    "node_type": child_type,
-                    "key": prop_key,
-                },
-            )
-            self._processor.apply(op)
-
-            # Find the newly created child by key (object children enforce unique key)
-            child_id = self._find_object_child_id(parent_id, prop_key)
-            if child_id is None:
-                continue
-
-            # Recurse only for objects; arrays remain empty; scalars stop
-            if t == "object":
-                self._expand_schema_into_ir(parent_id=child_id, schema_node=prop_schema)
-
-    def _find_object_child_id(self, parent_id: UUID, key: str) -> UUID | None:
-        if not self._store:
-            return None
-        parent = self._store.get_node(parent_id)
-        for cid in parent.children:
-            c = self._store.get_node(cid)
-            if c.key == key:
-                return cid
-        return None
-
-    # ---------------- IR Tree (top-level only for now) ----------------
-
-    def _render_ir_tree_top_level(self) -> None:
-        if not self._store or not self._root_id:
-            return
-
-        root = self._store.get_node(self._root_id)
-        children = []
-        for cid in root.children:
-            c = self._store.get_node(cid)
-            label = c.key or ""
-            children.append(
-                {
-                    "type": c.type.name,
-                    "key": label,
-                    "label": label,
-                    "node_id": str(cid),
-                }
-            )
-
-        self.tree_panel.set_tree({"Config Root": children})
-
-    # ---------------- Dump IR for proof ----------------
-
-    def _dump_ir(self, node_id: UUID, indent: int = 0) -> str:
-        if not self._store:
-            return ""
-
-        node = self._store.get_node(node_id)
-        pad = "  " * indent
-
-        if node.type == NodeType.SCALAR:
-            k = node.key or ""
-            v = node.value
-            return f"{pad}{k}: {v}"
-
-        if node.type == NodeType.LIST:
-            k = node.key or ""
-            lines = [f"{pad}{k}: []  # list"]
-            for i, cid in enumerate(node.children):
-                lines.append(f"{pad}  - [{i}]")
-                lines.append(self._dump_ir(cid, indent + 2))
-            return "\n".join(lines)
-
-        # OBJECT
-        k = node.key or "root"
-        lines = [f"{pad}{k}:  # object"]
-        for cid in node.children:
-            lines.append(self._dump_ir(cid, indent + 1))
-        return "\n".join(lines)
+    def _on_config_wizard(self) -> None:
+        """Handle Config Wizard menu action."""
+        self.document_manager.handle_config_wizard()
 
     # ---------------- Node Selection ----------------
 
     def _on_node_selected(self, meta: dict) -> None:
-        key = meta.get("key", "")
-        self.statusBar().showMessage(f"Selected: {key}")
+        """Handle node selection from tree panels."""
+        self.tree_renderer.handle_node_selection(meta, self._update_status)
 
-        # If config document is active, show IR subtree
-        if self._store is not None:
-            node_id_str = meta.get("node_id")
-            if node_id_str:
-                try:
-                    nid = UUID(node_id_str)
-                except Exception:
-                    return
-                if self._store.has_node(nid):
-                    self.right_panel.set_full_preview_text(self._dump_ir(nid))
-                    return
+    # ---------------- Node Operations ----------------
 
-        # Otherwise, show schema info like before
-        if not self._schema or not key:
+    def _on_add_node_requested(self, parent_meta: dict) -> None:
+        """Handle request to add a child node."""
+        self.node_add_operations.handle_add_node(parent_meta)
+
+    def _on_remove_node_requested(self, node_meta: dict) -> None:
+        """Handle request to remove a node."""
+        self.node_edit_operations.handle_remove_node(node_meta)
+
+    def _on_move_node_requested(self, move_data: dict) -> None:
+        """Handle request to move a node (LIST reordering)."""
+        self.node_edit_operations.handle_move_node(move_data)
+
+    def _on_edit_value_requested(self, meta: dict) -> None:
+        """Handle request to edit a scalar value (legacy flow from tree context menu)."""
+        self.node_edit_operations.handle_edit_value(meta)
+
+    def _on_scalar_value_edited(self, node_id_str: str, raw_value: str) -> None:
+        """Handle live scalar value edit from Model projection editor.
+        
+        Performs type-based validation and commits to IR only when valid.
+        Invalid input remains in buffer with inline hint, IR stays valid.
+        """
+        if not self.document_manager.get_store():
             return
 
-        props = self._schema.root.get("properties", {})
-        node_schema = props.get(key)
-        if not isinstance(node_schema, dict):
+        from uuid import UUID
+        from zeno.core.operation import Operation
+        from zeno.core.types import NodeType
+
+        try:
+            node_id = UUID(node_id_str)
+        except Exception:
             return
 
-        node_type = node_schema.get("type", "unknown")
-        lines = [f"# {key}", f"type: {node_type}", ""]
+        store = self.document_manager.get_store()
+        if not store or not store.has_node(node_id):
+            return
 
-        if node_type == "object":
-            p = node_schema.get("properties", {})
-            lines.append("properties:")
-            if isinstance(p, dict):
-                for name in p.keys():
-                    lines.append(f"  - {name}")
+        node = store.get_node(node_id)
+        if node.type != NodeType.SCALAR:
+            return
 
-        elif node_type == "array":
-            items = node_schema.get("items", {})
-            if isinstance(items, dict):
-                lines.append(f"items type: {items.get('type', 'unknown')}")
+        # Type-based validation (currently passthrough, schema-type checking to be added)
+        typed_value = raw_value
 
-        self.right_panel.set_full_preview_text("\n".join(lines))
+        # Apply update operation
+        processor = self.document_manager.get_processor()
+        if not processor:
+            return
+
+        op = Operation.create(
+            operation_type="update_scalar",
+            target_node_id=None,
+            payload={
+                "node_id": node_id,
+                "value": typed_value,
+            },
+        )
+
+        try:
+            processor.apply(op)
+            self.right_panel.mark_buffer_valid(node_id_str)
+            self._set_document_dirty(True)
+            self.tree_renderer.render_ir_tree_top_level()
+            self._update_status(f"Updated {node.key or 'value'}")
+        except Exception as e:
+            # Validation or constraint failure - keep in buffer
+            self.right_panel.mark_buffer_invalid(node_id_str, str(e))
+            self._update_status(f"Validation error: {e}")
+
+    def _on_invalid_buffers_changed(self, has_invalid: bool) -> None:
+        """Update Save gating when buffer validity changes."""
+        self._has_invalid_buffers = has_invalid
+        self._update_menu_state()
 
     # ---------------- About ----------------
 
     def _on_about(self) -> None:
         QMessageBox.information(self, "About", "Zeno Rebuild Phase.")
+
+    # -------- Close Event --------
+
+    def closeEvent(self, event) -> None:
+        """Override close event to check for unsaved changes."""
+        if not self.document_manager.is_dirty():
+            event.accept()
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Unsaved Changes",
+            "Do you want to save your changes before exiting?",
+            QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+            QMessageBox.Save
+        )
+
+        if reply == QMessageBox.Save:
+            self._on_save()
+            if not self.document_manager.is_dirty():  # Save succeeded
+                event.accept()
+            else:
+                event.ignore()  # Save failed or was cancelled
+        elif reply == QMessageBox.Discard:
+            event.accept()
+        else:  # Cancel
+            event.ignore()
 
 
 def main() -> int:
@@ -310,6 +376,10 @@ def main() -> int:
     win = ZenoMainWindow()
     win.show()
     return app.exec()
+
+
+def run() -> int:
+    return main()
 
 
 if __name__ == "__main__":

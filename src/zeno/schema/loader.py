@@ -21,14 +21,14 @@ class SchemaValidationError(SchemaError):
     """Raised when a schema file is syntactically valid YAML but structurally invalid."""
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class SchemaHeader:
     zeno_schema: str
     application: str
     format: str
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Schema:
     header: SchemaHeader
     root: Mapping[str, Any]

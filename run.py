@@ -1,4 +1,4 @@
-﻿from zeno.ui.app import run
+﻿from zeno.ui.app import main
 
 if __name__ == "__main__":
-    run()
+    raise SystemExit(main())

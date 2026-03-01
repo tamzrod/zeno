@@ -4,12 +4,11 @@
 
 This document defines the validation architecture of Zeno.
 
-Zeno uses layered validation to enforce correctness while preserving a
+Zeno uses live validation to enforce correctness while preserving a
 clean separation between:
 
 -   Structural integrity
 -   Configuration integrity
--   Runtime correctness
 
 Validation is deterministic and explicit.
 
@@ -26,26 +25,25 @@ Validation blocks invalid state transitions.
 
 ------------------------------------------------------------------------
 
-## 3. Two-Phase Validation Model
+## 3. Single-Phase Validation Model
 
-Zeno uses two validation phases:
+Zeno validates all edits before committing to IR.
 
-1.  Write Phase Validation
-2.  Generate Phase Validation
+There is no Generate phase. There is no separate second validation pass.
 
-Each phase protects a different boundary.
+All validation now occurs before IR mutation.
+
+IR must never contain invalid state.
 
 ------------------------------------------------------------------------
 
-## 4. Write Phase Validation
+## 4. Live Validation
 
-Triggered by: Modify Tab → Write button
+Triggered by: Model tab → per-keystroke edit
 
 ### 4.1 Purpose
 
-Protect internal IR integrity.
-
-Prevent invalid configuration state from being stored.
+Ensure IR always contains only valid state.
 
 ### 4.2 What Is Validated
 
@@ -57,48 +55,19 @@ Prevent invalid configuration state from being stored.
 
 ### 4.3 What Is NOT Validated
 
--   Runtime export constraints
--   Cross-field semantic logic (unless schema declares it)
--   Deployment environment checks
+-   (Future extension placeholder)
 
 ### 4.4 Behavior on Failure
 
+-   Input remains in buffer
 -   IR is NOT updated
--   Errors are attached to node paths
--   Tree nodes are highlighted
--   Status line displays error summary
+-   Inline floating hint displays error
+-   Save is disabled
 -   No popup dialogs
 
 ------------------------------------------------------------------------
 
-## 5. Generate Phase Validation
-
-Triggered by: Preview Tab → Generate button
-
-### 5.1 Purpose
-
-Protect runtime export correctness.
-
-Prevent invalid configuration from being generated.
-
-### 5.2 What Is Validated
-
--   Structural correctness (re-check)
--   Semantic rules
--   Cross-field constraints
--   Domain-specific rules
--   Runtime export constraints
-
-### 5.3 Behavior on Failure
-
--   Preview is NOT updated
--   Errors are highlighted
--   Status line displays summary
--   Previous valid preview remains intact
-
-------------------------------------------------------------------------
-
-## 6. Uniqueness Enforcement
+## 5. Uniqueness Enforcement
 
 Schema may declare:
 
@@ -111,9 +80,9 @@ Rules:
 
 -   Applies only to arrays
 -   Applies within array scope
--   Enforced during Write phase
+-   Enforced before IR commit
 -   Single-field uniqueness only
--   Duplicate values block Write operation
+-   Duplicate values block commit
 
 Example error:
 
@@ -123,7 +92,7 @@ Example error:
 
 ------------------------------------------------------------------------
 
-## 7. Error Object Model
+## 6. Error Object Model
 
 Validators return structured errors.
 
@@ -131,20 +100,21 @@ Minimum fields:
 
     path: listeners[1].port
     message: Duplicate value 502
-    phase: write | generate
     severity: error
 
 UI consumes these errors to:
 
 -   Highlight tree nodes
--   Highlight fields
+-   Highlight model lines
+-   Show inline floating hint
 -   Update status line
+-   Disable Save
 
 Validation engine must never manipulate UI directly.
 
 ------------------------------------------------------------------------
 
-## 8. Strict Mode
+## 7. Strict Mode
 
 Schema grammar is strict.
 
@@ -156,26 +126,34 @@ Strict grammar reduces ambiguity and mistake surface.
 
 ------------------------------------------------------------------------
 
-## 9. Mutation vs Projection Separation
+## 8. Mutation Boundary
 
-Write Phase protects mutation.
+All validation occurs before IR mutation.
 
-Generate Phase protects projection.
-
-This separation ensures:
+This ensures:
 
 -   Internal state remains consistent
--   Runtime export is safe
 -   User workflow remains deterministic
+-   IR is always valid
 
 ------------------------------------------------------------------------
 
-## 10. Design Evolution Notes
+## 9. Design Evolution Notes
 
-Initial design: - Structural validation only
+Initial design:
+- Structural validation only
 
-Evolved design: - Strict schema grammar - Array-local `unique_by` -
-Two-phase validation model - Explicit mutation vs projection boundary -
-Highlight-based error reporting (no popups)
+Evolved design (v2):
+- Strict schema grammar
+- Array-local `unique_by`
+- Two-phase validation model (Write/Generate)
+- Explicit mutation vs projection boundary
+
+Current design (v3):
+- Single-phase live validation
+- Valid-only IR guarantee
+- Removed Generate phase
+- Save gating on validation errors
+
 
 Validation engine is central to Zeno's safety model.

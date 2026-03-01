@@ -9,7 +9,7 @@ from .loader import Schema
 from .ir_validator import IRNodeView
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class IRSemanticError:
     path: str
     message: str
